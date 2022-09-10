@@ -89,8 +89,6 @@ pub fn main_js() -> Result<(), JsValue> {
         let x = side / 2.0;
         let y = 0.0;
 
-        sierpinski(&context, x, y, side, "rgb(0, 255, 0)", 8);
-
         let json = fetch_json("rhb.json")
             .await
             .expect("Could not fetch rhb.json");
@@ -152,58 +150,4 @@ async fn fetch_json(json_path: &str) -> Result<JsValue, JsValue> {
     // JS's dynamic typing into Rust's static typing
     let resp: web_sys::Response = resp_value.dyn_into()?;
     wasm_bindgen_futures::JsFuture::from(resp.json()?).await
-}
-
-fn sierpinski(
-    context: &web_sys::CanvasRenderingContext2d,
-    x_top: f64,
-    y_top: f64,
-    side: f64,
-    color: &str,
-    depth: usize,
-) {
-    web_sys::console::log_1(&JsValue::from_str(&format!(
-        "Drawing triangle at {x_top} {y_top}"
-    )));
-
-    context.move_to(x_top, y_top);
-    context.begin_path();
-    context.line_to(x_top - side / 2.0, y_top + side);
-    context.line_to(x_top + side / 2.0, y_top + side);
-    context.line_to(x_top, y_top);
-    context.close_path();
-    context.stroke();
-    context.set_fill_style(&color.into());
-    context.fill();
-
-    if depth > 0 {
-        let mut rng = thread_rng();
-
-        let color = (
-            rng.gen_range(0..255),
-            rng.gen_range(0..255),
-            rng.gen_range(0..255),
-        );
-
-        let color = &format!("rgb({}, {}, {})", color.0, color.1, color.2);
-
-        let side = side / 2.0;
-        sierpinski(context, x_top, y_top, side, color, depth - 1);
-        sierpinski(
-            context,
-            x_top - side / 2.0,
-            y_top + side,
-            side,
-            color,
-            depth - 1,
-        );
-        sierpinski(
-            context,
-            x_top + side / 2.0,
-            y_top + side,
-            side,
-            color,
-            depth - 1,
-        );
-    }
 }
