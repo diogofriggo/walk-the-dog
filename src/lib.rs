@@ -67,8 +67,6 @@ pub fn main_js() -> Result<(), JsValue> {
             .into_serde()
             .expect("Could not convert rhb.json into a Sheet structure");
 
-        // COPY PASTE BEGINS
-
         let (success_tx, success_rx) = futures::channel::oneshot::channel::<Result<(), JsValue>>();
         let success_tx = Rc::new(Mutex::new(Some(success_tx)));
         let error_tx = Rc::clone(&success_tx);
@@ -91,8 +89,6 @@ pub fn main_js() -> Result<(), JsValue> {
         image.set_src("rhb.png");
 
         let _ = success_rx.await.unwrap();
-
-        // COPY PASTE ENDS
 
         // Closure::once(move || { is able to convert to Close<dyn FnMut()> but Closure::wrap( isn't
         // unlike Closure::once, Closure::wrap requires a Box, why?
