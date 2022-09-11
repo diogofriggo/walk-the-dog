@@ -2,11 +2,9 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Mutex;
 
-use rand::prelude::*;
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-// use web_sys::console;
 
 #[derive(Deserialize)]
 struct Sheet {
@@ -96,19 +94,34 @@ pub fn main_js() -> Result<(), JsValue> {
 
         // COPY PASTE ENDS
 
-        let sprite = sheet.frames.get("Run (1).png").expect("Cell not found");
-        let _ = context
-            .draw_image_with_html_image_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
-                &image,
-                sprite.frame.x.into(),
-                sprite.frame.y.into(),
-                sprite.frame.w.into(),
-                sprite.frame.h.into(),
-                200.0,
-                300.0,
-                sprite.frame.w.into(),
-                sprite.frame.h.into(),
-            );
+        // Closure::once(move || { is able to convert to Close<dyn FnMut()> but Closure::wrap( isn't
+        // unlike Closure::once, Closure::wrap requires a Box, why?
+        let mut frame = -1;
+        let interval_callback = Closure::wrap(Box::new(move || {
+            context.clear_rect(0.0, 0.0, 600.0, 600.0);
+            frame = (frame + 1) % 8;
+            let frame_name = format!("Run ({frame}).png");
+            let sprite = sheet.frames.get(&frame_name).expect("Cell not found");
+            let _ = context
+                .draw_image_with_html_image_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
+                    &image,
+                    sprite.frame.x.into(),
+                    sprite.frame.y.into(),
+                    sprite.frame.w.into(),
+                    sprite.frame.h.into(),
+                    200.0,
+                    300.0,
+                    sprite.frame.w.into(),
+                    sprite.frame.h.into(),
+                );
+        }) as Box<dyn FnMut()>);
+
+        let _ = window.set_interval_with_callback_and_timeout_and_arguments_0(
+            interval_callback.as_ref().unchecked_ref(),
+            50,
+        );
+
+        interval_callback.forget();
     });
 
     Ok(())
