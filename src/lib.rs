@@ -1,3 +1,6 @@
+#[macro_use]
+mod browser;
+
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Mutex;
@@ -24,46 +27,24 @@ struct Rect {
     h: u16,
 }
 
-// // When the `wee_alloc` feature is enabled, this uses `wee_alloc` as the global
-// // allocator.
-// //
-// // If you don't want to use `wee_alloc`, you can safely delete this.
-// #[cfg(feature = "wee_alloc")]
-// #[global_allocator]
-// static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
-
 // This is like the `main` function, except for JavaScript.
 #[wasm_bindgen(start)]
 pub fn main_js() -> Result<(), JsValue> {
-    // // This provides better error messages in debug mode.
-    // // It's disabled in release mode so it doesn't bloat up the file size.
-    // #[cfg(debug_assertions)]
     console_error_panic_hook::set_once();
 
-    // Your code goes here!
-    // console::log_1(&JsValue::from_str("Hello world!"));
-
-    let window = web_sys::window().unwrap();
-    let document = window.document().unwrap();
+    let document = browser::document().expect("No Document Found");
     let canvas = document
         .get_element_by_id("canvas")
         .unwrap()
         .dyn_into::<web_sys::HtmlCanvasElement>()
         .unwrap();
 
-    let context = canvas
-        .get_context("2d")
-        .unwrap()
-        .unwrap()
-        .dyn_into::<web_sys::CanvasRenderingContext2d>()
-        .unwrap();
+    let context = browser::context().expect("Could not get browser context");
 
-    wasm_bindgen_futures::spawn_local(async move {
-        let json = fetch_json("rhb.json")
+    browser::spawn_local(async move {
+        let sheet: Sheet = browser::fetch_json("rhb.json")
             .await
-            .expect("Could not fetch rhb.json");
-
-        let sheet: Sheet = json
+            .expect("Could not fetch rhb.json")
             .into_serde()
             .expect("Could not convert rhb.json into a Sheet structure");
 
@@ -112,23 +93,15 @@ pub fn main_js() -> Result<(), JsValue> {
                 );
         }) as Box<dyn FnMut()>);
 
-        let _ = window.set_interval_with_callback_and_timeout_and_arguments_0(
-            interval_callback.as_ref().unchecked_ref(),
-            50,
-        );
+        let _ = browser::window()
+            .unwrap()
+            .set_interval_with_callback_and_timeout_and_arguments_0(
+                interval_callback.as_ref().unchecked_ref(),
+                50,
+            );
 
         interval_callback.forget();
     });
 
     Ok(())
-}
-
-async fn fetch_json(json_path: &str) -> Result<JsValue, JsValue> {
-    let window = web_sys::window().unwrap();
-    // window.fetch_with_str(json_path) returns a JS Promise
-    // which we then convert to a Rust Future so that we can await on it on the next line
-    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_str(json_path)).await?;
-    // JS's dynamic typing into Rust's static typing
-    let resp: web_sys::Response = resp_value.dyn_into()?;
-    wasm_bindgen_futures::JsFuture::from(resp.json()?).await
 }
