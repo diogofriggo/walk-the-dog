@@ -1,8 +1,16 @@
+use std::borrow::Borrow;
+
 use anyhow::{anyhow, Result};
 use futures::Future;
-use wasm_bindgen::{JsCast, JsValue};
+use wasm_bindgen::{
+    closure::{WasmClosure, WasmClosureFnOnce},
+    prelude::Closure,
+    JsCast, JsValue,
+};
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{CanvasRenderingContext2d, Document, HtmlCanvasElement, Response, Window};
+use web_sys::{
+    CanvasRenderingContext2d, Document, HtmlCanvasElement, HtmlImageElement, Response, Window,
+};
 
 macro_rules! log {
     ( $( $t:tt )* ) => {
@@ -67,4 +75,38 @@ pub async fn fetch_json(json_path: &str) -> Result<JsValue> {
     )
     .await
     .map_err(|err| anyhow!("error fetching JSON {:#?}", err))
+}
+
+pub fn new_image() -> Result<HtmlImageElement> {
+    HtmlImageElement::new().map_err(|err| anyhow!("Could not create HtmlImageElement: {:#?}", err))
+}
+
+pub fn closure_once<F, A, R>(fn_once: F) -> Closure<F::FnMut>
+where
+    F: 'static + WasmClosureFnOnce<A, R>,
+{
+    Closure::once(fn_once)
+}
+
+pub type LoopClosure = Closure<dyn FnMut(f64)>;
+
+pub fn request_animation_frame(callback: &LoopClosure) -> Result<i32> {
+    window()?
+        .request_animation_frame(callback.as_ref().unchecked_ref())
+        .map_err(|err| anyhow!("Cannot request animation frame {:#?}", err))
+}
+
+pub fn create_raf_closure(f: impl FnMut(f64) + 'static) -> LoopClosure {
+    closure_wrap(Box::new(f))
+}
+
+pub fn closure_wrap<T: WasmClosure + ?Sized>(data: Box<T>) -> Closure<T> {
+    // let f: Rc<RefCell<Option<LoopClosure>>> = Rc::new(RefCell::new(None));
+    // let g = f.clone();
+    // let animate = Some(create_raf_closure(move |perf: f64| {
+    //     request_animation_frame(f.borrow().as_ref().unwrap());
+    // }));
+    // *g.borrow_mut() = animate;
+    // request_animation_frame(g.borrow().as_ref().unwrap());
+    Closure::wrap(data)
 }
