@@ -110,3 +110,10 @@ pub fn closure_wrap<T: WasmClosure + ?Sized>(data: Box<T>) -> Closure<T> {
     // request_animation_frame(g.borrow().as_ref().unwrap());
     Closure::wrap(data)
 }
+
+pub fn now() -> Result<f64> {
+    Ok(window()?
+        .performance()
+        .ok_or_else(|| anyhow!("Performance object not found"))?
+        .now())
+}
