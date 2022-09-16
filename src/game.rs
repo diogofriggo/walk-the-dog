@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use serde::Deserialize;
-use web_sys::HtmlImageElement;
+
+use crate::engine::{Point, WalkTheDog};
 
 pub struct Rect {
     pub x: f32,
@@ -28,18 +29,13 @@ pub struct Sheet {
     pub frames: HashMap<String, Cell>,
 }
 
-pub struct WalkTheDog {
-    pub image: Option<HtmlImageElement>,
-    pub sheet: Option<Sheet>,
-    pub frame: u8,
-}
-
 impl WalkTheDog {
     pub fn new() -> Self {
         WalkTheDog {
             image: None,
             sheet: None,
             frame: 0,
+            position: Point { x: 0, y: 0 },
         }
     }
 }

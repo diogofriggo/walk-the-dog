@@ -11,12 +11,13 @@ use web_sys::HtmlImageElement;
 
 use crate::{
     browser::{self, LoopClosure},
+    game::Sheet,
     Rect,
 };
 
 use web_sys::CanvasRenderingContext2d;
 
-enum KeyPress {
+pub enum KeyPress {
     KeyUp(web_sys::KeyboardEvent),
     KeyDown(web_sys::KeyboardEvent),
 }
@@ -134,46 +135,20 @@ pub async fn load_image(source: &str) -> Result<HtmlImageElement> {
     Ok(image)
 }
 
-fn prepare_input() -> Result<UnboundedReceiver<KeyPress>> {
-    let (keydown_sender, keyevent_receiver) = unbounded();
-    let keydown_sender = Rc::new(RefCell::new(keydown_sender));
-    let keyup_sender = Rc::clone(&keydown_sender);
-
-    let onkeydown = browser::closure_wrap(Box::new(move |keycode: web_sys::KeyboardEvent| {
-        let _ = keydown_sender
-            .borrow_mut()
-            .start_send(KeyPress::KeyUp(keycode));
-    }) as Box<dyn FnMut(web_sys::KeyboardEvent)>);
-
-    let onkeyup = browser::closure_wrap(Box::new(move |keycode: web_sys::KeyboardEvent| {
-        let _ = keyup_sender
-            .borrow_mut()
-            .start_send(KeyPress::KeyUp(keycode));
-    }) as Box<dyn FnMut(web_sys::KeyboardEvent)>);
-
-    browser::window()?.set_onkeydown(Some(onkeydown.as_ref().unchecked_ref()));
-
-    browser::window()?.set_onkeydown(Some(onkeyup.as_ref().unchecked_ref()));
-
-    onkeydown.forget();
-    onkeyup.forget();
-
-    Ok(keyevent_receiver)
+pub struct WalkTheDog {
+    pub image: Option<HtmlImageElement>,
+    pub sheet: Option<Sheet>,
+    pub frame: u8,
+    pub position: Point,
 }
 
-fn process_input(state: &mut KeyState, keyevent_receiver: &mut UnboundedReceiver<KeyPress>) {
-    loop {
-        match keyevent_receiver.try_next() {
-            Ok(None) => break,
-            Err(_err) => break,
-            Ok(Some(event)) => match event {
-                KeyPress::KeyUp(event) => state.set_released(&event.code(), event),
-                KeyPress::KeyDown(event) => state.set_pressed(&event.code(), event),
-            },
-        }
-    }
+#[derive(Clone, Copy)]
+pub struct Point {
+    pub x: i16,
+    pub y: i16,
 }
 
+#[derive(Debug)]
 pub struct KeyState {
     pressed_keys: HashMap<String, web_sys::KeyboardEvent>,
 }
@@ -193,7 +168,53 @@ impl KeyState {
         self.pressed_keys.insert(code.into(), event);
     }
 
-    fn set_released(&mut self, code: &str, event: web_sys::KeyboardEvent) {
-        self.pressed_keys.remove(code.into());
+    fn set_released(&mut self, code: &str) {
+        self.pressed_keys.remove(code);
+    }
+}
+
+fn prepare_input() -> Result<UnboundedReceiver<KeyPress>> {
+    let (keydown_sender, keyevent_receiver) = unbounded();
+    let keydown_sender = Rc::new(RefCell::new(keydown_sender));
+    let keyup_sender = Rc::clone(&keydown_sender);
+
+    let onkeydown = browser::closure_wrap(Box::new(move |keycode: web_sys::KeyboardEvent| {
+        let _ = keydown_sender
+            .borrow_mut()
+            .start_send(KeyPress::KeyDown(keycode));
+    }) as Box<dyn FnMut(web_sys::KeyboardEvent)>);
+
+    let onkeyup = browser::closure_wrap(Box::new(move |keycode: web_sys::KeyboardEvent| {
+        let _ = keyup_sender
+            .borrow_mut()
+            .start_send(KeyPress::KeyUp(keycode));
+    }) as Box<dyn FnMut(web_sys::KeyboardEvent)>);
+
+    browser::window()?.set_onkeydown(Some(onkeydown.as_ref().unchecked_ref()));
+
+    browser::window()?.set_onkeyup(Some(onkeyup.as_ref().unchecked_ref()));
+
+    onkeydown.forget();
+    onkeyup.forget();
+
+    Ok(keyevent_receiver)
+}
+
+fn process_input(state: &mut KeyState, keyevent_receiver: &mut UnboundedReceiver<KeyPress>) {
+    loop {
+        match keyevent_receiver.try_next() {
+            Ok(None) => break,
+            Err(_err) => break,
+            Ok(Some(event)) => match event {
+                KeyPress::KeyUp(event) => {
+                    log!("set_released {}", event.code());
+                    state.set_released(&event.code());
+                }
+                KeyPress::KeyDown(event) => {
+                    log!("set_pressed {}", event.code());
+                    state.set_pressed(&event.code(), event);
+                }
+            },
+        }
     }
 }
