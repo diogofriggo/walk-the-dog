@@ -1,5 +1,3 @@
-use std::borrow::Borrow;
-
 use anyhow::{anyhow, Result};
 use futures::Future;
 use wasm_bindgen::{
@@ -101,13 +99,6 @@ pub fn create_raf_closure(f: impl FnMut(f64) + 'static) -> LoopClosure {
 }
 
 pub fn closure_wrap<T: WasmClosure + ?Sized>(data: Box<T>) -> Closure<T> {
-    // let f: Rc<RefCell<Option<LoopClosure>>> = Rc::new(RefCell::new(None));
-    // let g = f.clone();
-    // let animate = Some(create_raf_closure(move |perf: f64| {
-    //     request_animation_frame(f.borrow().as_ref().unwrap());
-    // }));
-    // *g.borrow_mut() = animate;
-    // request_animation_frame(g.borrow().as_ref().unwrap());
     Closure::wrap(data)
 }
 
