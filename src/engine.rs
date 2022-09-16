@@ -1,8 +1,11 @@
-use std::{cell::RefCell, rc::Rc, sync::Mutex};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Mutex};
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use futures::channel::oneshot::channel;
+use futures::channel::{
+    mpsc::{unbounded, UnboundedReceiver},
+    oneshot::channel,
+};
 use wasm_bindgen::{prelude::Closure, JsCast, JsValue};
 use web_sys::HtmlImageElement;
 
@@ -12,6 +15,11 @@ use crate::{
 };
 
 use web_sys::CanvasRenderingContext2d;
+
+enum KeyPress {
+    KeyUp(web_sys::KeyboardEvent),
+    KeyDown(web_sys::KeyboardEvent),
+}
 
 pub struct Renderer {
     context: CanvasRenderingContext2d,
@@ -47,7 +55,7 @@ impl Renderer {
 #[async_trait(?Send)]
 pub trait Game {
     async fn initialize(&self) -> Result<Box<dyn Game>>;
-    fn update(&mut self);
+    fn update(&mut self, keystate: &KeyState);
     fn draw(&self, renderer: &Renderer);
 }
 
@@ -62,6 +70,8 @@ type SharedLoopClosure = Rc<RefCell<Option<LoopClosure>>>;
 
 impl GameLoop {
     pub async fn start(game: impl Game + 'static) -> Result<()> {
+        let mut keyevent_receiver = prepare_input()?;
+
         let mut game = game.initialize().await?;
 
         let mut game_loop = GameLoop {
@@ -76,10 +86,12 @@ impl GameLoop {
         let f: SharedLoopClosure = Rc::new(RefCell::new(None));
         let g = f.clone();
 
+        let mut keystate = KeyState::new();
         *g.borrow_mut() = Some(browser::create_raf_closure(move |perf| {
+            process_input(&mut keystate, &mut keyevent_receiver);
             game_loop.accumulated_delta += (perf - game_loop.last_frame) as f32;
             while game_loop.accumulated_delta > FRAME_SIZE {
-                game.update();
+                game.update(&keystate);
                 game_loop.accumulated_delta -= FRAME_SIZE;
             }
             game_loop.last_frame = perf;
@@ -120,4 +132,68 @@ pub async fn load_image(source: &str) -> Result<HtmlImageElement> {
     image.set_src(source);
     complete_rx.await??;
     Ok(image)
+}
+
+fn prepare_input() -> Result<UnboundedReceiver<KeyPress>> {
+    let (keydown_sender, keyevent_receiver) = unbounded();
+    let keydown_sender = Rc::new(RefCell::new(keydown_sender));
+    let keyup_sender = Rc::clone(&keydown_sender);
+
+    let onkeydown = browser::closure_wrap(Box::new(move |keycode: web_sys::KeyboardEvent| {
+        let _ = keydown_sender
+            .borrow_mut()
+            .start_send(KeyPress::KeyUp(keycode));
+    }) as Box<dyn FnMut(web_sys::KeyboardEvent)>);
+
+    let onkeyup = browser::closure_wrap(Box::new(move |keycode: web_sys::KeyboardEvent| {
+        let _ = keyup_sender
+            .borrow_mut()
+            .start_send(KeyPress::KeyUp(keycode));
+    }) as Box<dyn FnMut(web_sys::KeyboardEvent)>);
+
+    browser::window()?.set_onkeydown(Some(onkeydown.as_ref().unchecked_ref()));
+
+    browser::window()?.set_onkeydown(Some(onkeyup.as_ref().unchecked_ref()));
+
+    onkeydown.forget();
+    onkeyup.forget();
+
+    Ok(keyevent_receiver)
+}
+
+fn process_input(state: &mut KeyState, keyevent_receiver: &mut UnboundedReceiver<KeyPress>) {
+    loop {
+        match keyevent_receiver.try_next() {
+            Ok(None) => break,
+            Err(_err) => break,
+            Ok(Some(event)) => match event {
+                KeyPress::KeyUp(event) => state.set_released(&event.code(), event),
+                KeyPress::KeyDown(event) => state.set_pressed(&event.code(), event),
+            },
+        }
+    }
+}
+
+pub struct KeyState {
+    pressed_keys: HashMap<String, web_sys::KeyboardEvent>,
+}
+
+impl KeyState {
+    pub fn new() -> Self {
+        KeyState {
+            pressed_keys: HashMap::new(),
+        }
+    }
+
+    pub fn is_pressed(&self, code: &str) -> bool {
+        self.pressed_keys.contains_key(code)
+    }
+
+    fn set_pressed(&mut self, code: &str, event: web_sys::KeyboardEvent) {
+        self.pressed_keys.insert(code.into(), event);
+    }
+
+    fn set_released(&mut self, code: &str, event: web_sys::KeyboardEvent) {
+        self.pressed_keys.remove(code.into());
+    }
 }

@@ -4,6 +4,7 @@ mod engine;
 mod game;
 
 use engine::GameLoop;
+use engine::KeyState;
 use game::Rect;
 use game::WalkTheDog;
 use wasm_bindgen::prelude::*;
@@ -27,7 +28,7 @@ impl Game for WalkTheDog {
         }))
     }
 
-    fn update(&mut self) {
+    fn update(&mut self, keystate: &KeyState) {
         if self.frame < 23 {
             self.frame += 1;
         } else {
