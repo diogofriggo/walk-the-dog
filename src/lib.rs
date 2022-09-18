@@ -6,27 +6,32 @@ mod game;
 use engine::GameLoop;
 use engine::KeyState;
 use engine::Point;
-use engine::WalkTheDog;
 use game::Rect;
+use game::RedHatBoy;
+use game::WalkTheDog;
 use wasm_bindgen::prelude::*;
 
 use crate::engine::{Game, Renderer};
 use crate::game::Sheet;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 
 #[async_trait(?Send)]
 impl Game for WalkTheDog {
     async fn initialize(&self) -> Result<Box<dyn Game>> {
-        let sheet: Sheet = browser::fetch_json("rhb.json").await?.into_serde()?;
+        let sheet: Option<Sheet> = Some(browser::fetch_json("rhb.json").await?.into_serde()?);
 
-        let image = engine::load_image("rhb.png").await?;
+        let image = Some(engine::load_image("rhb.png").await?);
 
         Ok(Box::new(WalkTheDog {
-            image: Some(image),
-            sheet: Some(sheet),
+            image: image.clone(),
+            sheet: sheet.clone(),
             frame: self.frame,
             position: self.position,
+            rhb: Some(RedHatBoy::new(
+                sheet.clone().ok_or_else(|| anyhow!("No Sheet Present"))?,
+                image.clone().ok_or_else(|| anyhow!("No Image Present"))?,
+            )),
         }))
     }
 

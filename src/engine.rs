@@ -135,13 +135,6 @@ pub async fn load_image(source: &str) -> Result<HtmlImageElement> {
     Ok(image)
 }
 
-pub struct WalkTheDog {
-    pub image: Option<HtmlImageElement>,
-    pub sheet: Option<Sheet>,
-    pub frame: u8,
-    pub position: Point,
-}
-
 #[derive(Clone, Copy)]
 pub struct Point {
     pub x: i16,
@@ -207,11 +200,9 @@ fn process_input(state: &mut KeyState, keyevent_receiver: &mut UnboundedReceiver
             Err(_err) => break,
             Ok(Some(event)) => match event {
                 KeyPress::KeyUp(event) => {
-                    log!("set_released {}", event.code());
                     state.set_released(&event.code());
                 }
                 KeyPress::KeyDown(event) => {
-                    log!("set_pressed {}", event.code());
                     state.set_pressed(&event.code(), event);
                 }
             },
