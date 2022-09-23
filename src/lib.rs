@@ -24,13 +24,9 @@ impl Game for WalkTheDog {
         let image = Some(engine::load_image("rhb.png").await?);
 
         Ok(Box::new(WalkTheDog {
-            image: image.clone(),
-            sheet: sheet.clone(),
-            frame: self.frame,
-            position: self.position,
             rhb: Some(RedHatBoy::new(
-                sheet.clone().ok_or_else(|| anyhow!("No Sheet Present"))?,
-                image.clone().ok_or_else(|| anyhow!("No Image Present"))?,
+                sheet.ok_or_else(|| anyhow!("No Sheet Present"))?,
+                image.ok_or_else(|| anyhow!("No Image Present"))?,
             )),
         }))
     }
@@ -47,32 +43,17 @@ impl Game for WalkTheDog {
 
         if keystate.is_pressed("ArrowRight") {
             velocity.x += 3;
+            self.rhb.as_mut().unwrap().run_right();
         }
 
         if keystate.is_pressed("ArrowLeft") {
             velocity.x -= 3;
         }
 
-        if self.frame < 23 {
-            self.frame += 1;
-        } else {
-            self.frame = 0;
-        }
-
-        self.position.x += velocity.x;
-        self.position.y += velocity.y;
+        self.rhb.as_mut().unwrap().update();
     }
 
     fn draw(&self, renderer: &Renderer) {
-        let current_sprite = (self.frame / 3) + 1;
-        let frame_name = format!("Run ({}).png", current_sprite);
-
-        let sprite = self
-            .sheet
-            .as_ref()
-            .and_then(|sheet| sheet.frames.get(&frame_name))
-            .expect("Cell not found");
-
         let rect = Rect {
             x: 0.0,
             y: 0.0,
@@ -82,24 +63,7 @@ impl Game for WalkTheDog {
 
         renderer.clear(&rect);
 
-        let frame = Rect {
-            x: sprite.frame.x.into(),
-            y: sprite.frame.y.into(),
-            width: sprite.frame.w.into(),
-            height: sprite.frame.h.into(),
-        };
-
-        let destination = Rect {
-            x: self.position.x.into(),
-            y: self.position.y.into(),
-            width: sprite.frame.w.into(),
-            height: sprite.frame.h.into(),
-        };
-
-        let _ = self
-            .image
-            .as_ref()
-            .map(|image| renderer.draw_image(image, &frame, &destination));
+        self.rhb.as_ref().unwrap().draw(renderer);
     }
 }
 

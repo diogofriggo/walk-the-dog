@@ -11,7 +11,6 @@ use web_sys::HtmlImageElement;
 
 use crate::{
     browser::{self, LoopClosure},
-    game::Sheet,
     Rect,
 };
 
