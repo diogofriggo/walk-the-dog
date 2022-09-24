@@ -54,6 +54,10 @@ impl Game for WalkTheDog {
                 velocity.x -= 3;
             }
 
+            if keystate.is_pressed("Space") {
+                rhb.jump()
+            }
+
             rhb.update();
         }
     }
