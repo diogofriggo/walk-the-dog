@@ -30,13 +30,14 @@ pub struct Sheet {
     pub frames: HashMap<String, Cell>,
 }
 
-pub struct WalkTheDog {
-    pub rhb: Option<RedHatBoy>,
+pub enum WalkTheDog {
+    Loading,
+    Loaded(RedHatBoy),
 }
 
 impl WalkTheDog {
     pub fn new() -> Self {
-        WalkTheDog { rhb: None }
+        WalkTheDog::Loading
     }
 }
 

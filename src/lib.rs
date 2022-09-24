@@ -19,38 +19,43 @@ use async_trait::async_trait;
 #[async_trait(?Send)]
 impl Game for WalkTheDog {
     async fn initialize(&self) -> Result<Box<dyn Game>> {
-        let sheet: Option<Sheet> = Some(browser::fetch_json("rhb.json").await?.into_serde()?);
+        match self {
+            WalkTheDog::Loading => {
+                let json = browser::fetch_json("rhb.json").await?;
 
-        let image = Some(engine::load_image("rhb.png").await?);
+                let rhb = RedHatBoy::new(
+                    json.into_serde::<Sheet>()?,
+                    engine::load_image("rhb.png").await?,
+                );
 
-        Ok(Box::new(WalkTheDog {
-            rhb: Some(RedHatBoy::new(
-                sheet.ok_or_else(|| anyhow!("No Sheet Present"))?,
-                image.ok_or_else(|| anyhow!("No Image Present"))?,
-            )),
-        }))
+                Ok(Box::new(WalkTheDog::Loaded(rhb)))
+            }
+            WalkTheDog::Loaded(_) => Err(anyhow!("Error: Game is already initialized!")),
+        }
     }
 
     fn update(&mut self, keystate: &KeyState) {
-        let mut velocity = Point { x: 0, y: 0 };
-        if keystate.is_pressed("ArrowDown") {
-            self.rhb.as_mut().unwrap().slide();
-        }
+        if let WalkTheDog::Loaded(rhb) = self {
+            let mut velocity = Point { x: 0, y: 0 };
+            if keystate.is_pressed("ArrowDown") {
+                rhb.slide();
+            }
 
-        if keystate.is_pressed("ArrowUp") {
-            velocity.y -= 3;
-        }
+            if keystate.is_pressed("ArrowUp") {
+                velocity.y -= 3;
+            }
 
-        if keystate.is_pressed("ArrowRight") {
-            velocity.x += 3;
-            self.rhb.as_mut().unwrap().run_right();
-        }
+            if keystate.is_pressed("ArrowRight") {
+                velocity.x += 3;
+                rhb.run_right();
+            }
 
-        if keystate.is_pressed("ArrowLeft") {
-            velocity.x -= 3;
-        }
+            if keystate.is_pressed("ArrowLeft") {
+                velocity.x -= 3;
+            }
 
-        self.rhb.as_mut().unwrap().update();
+            rhb.update();
+        }
     }
 
     fn draw(&self, renderer: &Renderer) {
@@ -63,7 +68,9 @@ impl Game for WalkTheDog {
 
         renderer.clear(&rect);
 
-        self.rhb.as_ref().unwrap().draw(renderer);
+        if let WalkTheDog::Loaded(rhb) = self {
+            rhb.draw(renderer);
+        }
     }
 }
 
