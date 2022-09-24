@@ -34,7 +34,7 @@ impl Game for WalkTheDog {
     fn update(&mut self, keystate: &KeyState) {
         let mut velocity = Point { x: 0, y: 0 };
         if keystate.is_pressed("ArrowDown") {
-            velocity.y += 3;
+            self.rhb.as_mut().unwrap().slide();
         }
 
         if keystate.is_pressed("ArrowUp") {
