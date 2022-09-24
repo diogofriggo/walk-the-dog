@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde::Deserialize;
 use web_sys::HtmlImageElement;
 
-use crate::engine::Renderer;
+use crate::engine::{Image, Renderer};
 
 pub struct Rect {
     pub x: f32,
@@ -32,7 +32,12 @@ pub struct Sheet {
 
 pub enum WalkTheDog {
     Loading,
-    Loaded(RedHatBoy),
+    Loaded(Walk),
+}
+
+pub struct Walk {
+    pub boy: RedHatBoy,
+    pub background: Image,
 }
 
 impl WalkTheDog {
