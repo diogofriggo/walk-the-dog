@@ -28,12 +28,19 @@ impl Game for WalkTheDog {
                 let background = engine::load_image("BG.png").await?;
                 let background = Image::new(background, Point { x: 0, y: 0 });
 
+                let stone = engine::load_image("Stone.png").await?;
+                let stone = Image::new(stone, Point { x: 150, y: 546 });
+
                 let boy = RedHatBoy::new(
                     json.into_serde::<Sheet>()?,
                     engine::load_image("rhb.png").await?,
                 );
 
-                let walk = Walk { boy, background };
+                let walk = Walk {
+                    boy,
+                    background,
+                    stone,
+                };
 
                 Ok(Box::new(WalkTheDog::Loaded(walk)))
             }
@@ -66,6 +73,14 @@ impl Game for WalkTheDog {
             }
 
             walk.boy.update();
+
+            if walk
+                .boy
+                .bounding_box()
+                .intersects(&walk.stone.bounding_box())
+            {
+                walk.boy.knock_out();
+            }
         }
     }
 
@@ -82,6 +97,8 @@ impl Game for WalkTheDog {
         if let WalkTheDog::Loaded(walk) = self {
             walk.background.draw(renderer);
             walk.boy.draw(renderer);
+            walk.stone.draw(renderer);
+            walk.stone.draw_bounding_box(renderer);
         }
     }
 }

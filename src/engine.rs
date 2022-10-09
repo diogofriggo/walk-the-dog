@@ -56,6 +56,18 @@ impl Renderer {
             .draw_image_with_html_image_element(image, position.x.into(), position.y.into())
             .expect("Drawing is throwing exceptions! Unrecoverable error.");
     }
+
+    pub fn draw_rect(&self, bounding_box: &Rect) {
+        self.context.set_stroke_style(&JsValue::from_str("#FF0000"));
+        self.context.begin_path();
+        self.context.rect(
+            bounding_box.x.into(),
+            bounding_box.y.into(),
+            bounding_box.width.into(),
+            bounding_box.height.into(),
+        );
+        self.context.stroke();
+    }
 }
 
 #[async_trait(?Send)]
@@ -218,14 +230,34 @@ fn process_input(state: &mut KeyState, keyevent_receiver: &mut UnboundedReceiver
 pub struct Image {
     element: HtmlImageElement,
     position: Point,
+    bounding_box: Rect,
 }
 
 impl Image {
     pub fn new(element: HtmlImageElement, position: Point) -> Self {
-        Self { element, position }
+        let bounding_box = Rect {
+            x: position.x.into(),
+            y: position.y.into(),
+            width: element.width() as f32,
+            height: element.height() as f32,
+        };
+
+        Self {
+            element,
+            position,
+            bounding_box,
+        }
     }
 
     pub fn draw(&self, renderer: &Renderer) {
         renderer.draw_entire_image(&self.element, &self.position)
+    }
+
+    pub fn draw_bounding_box(&self, renderer: &Renderer) {
+        renderer.draw_rect(&self.bounding_box);
+    }
+
+    pub fn bounding_box(&self) -> &Rect {
+        &self.bounding_box
     }
 }
