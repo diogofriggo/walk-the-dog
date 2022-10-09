@@ -77,7 +77,7 @@ impl Game for WalkTheDog {
             if walk
                 .boy
                 .bounding_box()
-                .intersects(&walk.stone.bounding_box())
+                .intersects(walk.stone.bounding_box())
             {
                 walk.boy.knock_out();
             }
