@@ -5,7 +5,10 @@ use std::collections::HashMap;
 use serde::Deserialize;
 use web_sys::HtmlImageElement;
 
-use crate::engine::{Image, Renderer};
+use crate::engine::{Image, Point, Renderer};
+
+pub const WIDTH: i16 = 1200;
+pub const HEIGHT: i16 = 600;
 
 pub struct Rect {
     pub x: f32,
@@ -68,6 +71,7 @@ pub struct Walk {
     pub boy: RedHatBoy,
     pub background: Image,
     pub stone: Image,
+    pub platform: Platform,
 }
 
 use red_hat_boy_states::*;
@@ -97,13 +101,25 @@ impl RedHatBoy {
             height: sprite.frame.h.into(),
         };
 
-        let destination = self.bounding_box();
+        let destination = self.destination_box();
 
-        renderer.draw_rect(&destination);
         renderer.draw_image(&self.image, &source, &destination);
+        renderer.draw_rect(&self.bounding_box());
     }
 
     pub fn bounding_box(&self) -> Rect {
+        const X_OFFSET: f32 = 18.0;
+        const Y_OFFSET: f32 = 14.0;
+        const WIDTH_OFFSET: f32 = 28.0;
+        let mut bounding_box = self.destination_box();
+        bounding_box.x += X_OFFSET;
+        bounding_box.width -= WIDTH_OFFSET;
+        bounding_box.y += Y_OFFSET;
+        bounding_box.height -= Y_OFFSET;
+        bounding_box
+    }
+
+    pub fn destination_box(&self) -> Rect {
         let sprite = self.current_sprite().expect("Cell not found!");
 
         let x = self.state_machine.context().position.x;
@@ -148,6 +164,26 @@ impl RedHatBoy {
     pub fn knock_out(&mut self) {
         self.state_machine = self.state_machine.transition(Event::KnockOut);
     }
+
+    pub fn land_on(&mut self, position: i16) {
+        self.state_machine = self.state_machine.transition(Event::Land(position));
+    }
+
+    pub fn _velocity_x(&self) -> i16 {
+        self.state_machine.context().velocity.x
+    }
+
+    pub fn velocity_y(&self) -> i16 {
+        self.state_machine.context().velocity.y
+    }
+
+    pub fn _pos_x(&self) -> i16 {
+        self.state_machine.context().position.x
+    }
+
+    pub fn pos_y(&self) -> i16 {
+        self.state_machine.context().position.y
+    }
 }
 
 pub enum Event {
@@ -156,6 +192,7 @@ pub enum Event {
     Update,
     Jump,
     KnockOut,
+    Land(i16),
 }
 
 #[derive(Copy, Clone)]
@@ -178,12 +215,21 @@ impl RedHatBoyStateMachine {
             (RedHatBoyStateMachine::Running(state), Event::Update) => state.update().into(),
             (RedHatBoyStateMachine::Running(state), Event::Jump) => state.jump().into(),
             (RedHatBoyStateMachine::Running(state), Event::KnockOut) => state.knock_out().into(),
+            (RedHatBoyStateMachine::Running(state), Event::Land(position)) => {
+                state.land_on(position).into()
+            }
 
             (RedHatBoyStateMachine::Sliding(state), Event::Update) => state.update().into(),
             (RedHatBoyStateMachine::Sliding(state), Event::KnockOut) => state.knock_out().into(),
+            (RedHatBoyStateMachine::Sliding(state), Event::Land(position)) => {
+                state.land_on(position).into()
+            }
 
             (RedHatBoyStateMachine::Jumping(state), Event::Update) => state.update().into(),
             (RedHatBoyStateMachine::Jumping(state), Event::KnockOut) => state.knock_out().into(),
+            (RedHatBoyStateMachine::Jumping(state), Event::Land(position)) => {
+                state.land_on(position).into()
+            }
 
             (RedHatBoyStateMachine::Falling(state), Event::Update) => state.update().into(),
 
@@ -262,7 +308,7 @@ impl From<SlidingEndState> for RedHatBoyStateMachine {
 impl From<JumpingEndState> for RedHatBoyStateMachine {
     fn from(end_state: JumpingEndState) -> Self {
         match end_state {
-            JumpingEndState::Complete(running_state) => running_state.into(),
+            JumpingEndState::Landing(running_state) => running_state.into(),
             JumpingEndState::Jumping(jumping_state) => jumping_state.into(),
         }
     }
@@ -274,5 +320,89 @@ impl From<FallingEndState> for RedHatBoyStateMachine {
             FallingEndState::Complete(dead_state) => dead_state.into(),
             FallingEndState::Falling(falling_state) => falling_state.into(),
         }
+    }
+}
+
+pub struct Platform {
+    sheet: Sheet,
+    image: HtmlImageElement,
+    position: Point,
+}
+
+impl Platform {
+    pub fn new(sheet: Sheet, image: HtmlImageElement, position: Point) -> Self {
+        Platform {
+            sheet,
+            image,
+            position,
+        }
+    }
+
+    pub fn draw(&self, renderer: &Renderer) {
+        let platform = self.current_sprite().expect("13.png does not exist");
+
+        let destination = self.destination_box();
+
+        let source = Rect {
+            x: platform.frame.x.into(),
+            y: platform.frame.y.into(),
+            width: destination.width,
+            height: destination.height,
+        };
+
+        renderer.draw_image(&self.image, &source, &destination);
+        self.draw_bounding_boxes(renderer);
+    }
+
+    pub fn draw_bounding_boxes(&self, renderer: &Renderer) {
+        for bounding_box in &self.bounding_boxes() {
+            renderer.draw_rect(bounding_box);
+        }
+    }
+
+    pub fn bounding_boxes(&self) -> Vec<Rect> {
+        const X_OFFSET: f32 = 60.0;
+        const END_HEIGHT: f32 = 54.0;
+        let destination_box = self.destination_box();
+        let bounding_box_one = Rect {
+            x: destination_box.x,
+            y: destination_box.y,
+            width: X_OFFSET,
+            height: END_HEIGHT,
+        };
+
+        let bounding_box_two = Rect {
+            x: destination_box.x + X_OFFSET,
+            y: destination_box.y,
+            width: destination_box.width - (X_OFFSET * 2.0),
+            height: destination_box.height,
+        };
+
+        let bounding_box_three = Rect {
+            x: destination_box.x + destination_box.width - X_OFFSET,
+            y: destination_box.y,
+            width: X_OFFSET,
+            height: END_HEIGHT,
+        };
+
+        vec![bounding_box_one, bounding_box_two, bounding_box_three]
+    }
+
+    pub fn destination_box(&self) -> Rect {
+        let platform = self.current_sprite().expect("13.png does not exist");
+
+        let width = (platform.frame.w * 3).into();
+        let height = platform.frame.h.into();
+
+        Rect {
+            x: self.position.x.into(),
+            y: self.position.y.into(),
+            width,
+            height,
+        }
+    }
+
+    pub fn current_sprite(&self) -> Option<&Cell> {
+        self.sheet.frames.get("13.png")
     }
 }

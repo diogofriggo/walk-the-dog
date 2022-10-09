@@ -14,9 +14,13 @@ use game::WalkTheDog;
 use wasm_bindgen::prelude::*;
 
 use crate::engine::{Game, Renderer};
-use crate::game::Sheet;
+use crate::game::{Platform, Sheet};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
+
+const LOW_PLATFORM: i16 = 420;
+const HIGH_PLATFORM: i16 = 375;
+const FIRST_PLATFORM: i16 = 370;
 
 #[async_trait(?Send)]
 impl Game for WalkTheDog {
@@ -25,21 +29,35 @@ impl Game for WalkTheDog {
             WalkTheDog::Loading => {
                 let json = browser::fetch_json("rhb.json").await?;
 
+                let boy = RedHatBoy::new(
+                    json.into_serde::<Sheet>()?,
+                    engine::load_image("rhb.png").await?,
+                );
+
                 let background = engine::load_image("BG.png").await?;
                 let background = Image::new(background, Point { x: 0, y: 0 });
 
                 let stone = engine::load_image("Stone.png").await?;
                 let stone = Image::new(stone, Point { x: 150, y: 546 });
 
-                let boy = RedHatBoy::new(
-                    json.into_serde::<Sheet>()?,
-                    engine::load_image("rhb.png").await?,
+                let platform_sheet = browser::fetch_json("tiles.json").await?;
+                let platform_sheet = platform_sheet.into_serde::<Sheet>()?;
+
+                let platform = engine::load_image("tiles.png").await?;
+                let platform = Platform::new(
+                    platform_sheet,
+                    platform,
+                    Point {
+                        x: FIRST_PLATFORM,
+                        y: LOW_PLATFORM,
+                    },
                 );
 
                 let walk = Walk {
                     boy,
                     background,
                     stone,
+                    platform,
                 };
 
                 Ok(Box::new(WalkTheDog::Loaded(walk)))
@@ -74,6 +92,25 @@ impl Game for WalkTheDog {
 
             walk.boy.update();
 
+            for bounding_box in &walk.platform.bounding_boxes() {
+                let intersects_with_platform = walk.boy.bounding_box().intersects(bounding_box);
+
+                if intersects_with_platform {
+                    // remember positive velocity means going down
+                    // and if y1 < y2 it means that y1 is above y2
+                    let is_falling = walk.boy.velocity_y() > 0;
+                    let is_above_platform =
+                        walk.boy.pos_y() < (walk.platform.destination_box().y as i16);
+
+                    if is_falling && is_above_platform {
+                        let position = bounding_box.y;
+                        walk.boy.land_on(position as i16);
+                    } else {
+                        walk.boy.knock_out();
+                    }
+                }
+            }
+
             if walk
                 .boy
                 .bounding_box()
@@ -88,8 +125,8 @@ impl Game for WalkTheDog {
         let rect = Rect {
             x: 0.0,
             y: 0.0,
-            width: 600.0,
-            height: 600.0,
+            width: game::WIDTH as f32,
+            height: game::HEIGHT as f32,
         };
 
         renderer.clear(&rect);
@@ -99,6 +136,7 @@ impl Game for WalkTheDog {
             walk.boy.draw(renderer);
             walk.stone.draw(renderer);
             walk.stone.draw_bounding_box(renderer);
+            walk.platform.draw(renderer);
         }
     }
 }

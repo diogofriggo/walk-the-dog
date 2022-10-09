@@ -1,6 +1,7 @@
 use crate::engine::Point;
 
 const FLOOR: i16 = 479;
+const PLAYER_HEIGHT: i16 = super::HEIGHT - FLOOR;
 const STARTING_POINT: i16 = -20;
 const IDLE_FRAME_NAME: &str = "Idle";
 const RUNNING_FRAME_NAME: &str = "Run";
@@ -12,9 +13,10 @@ const RUNNING_FRAMES: u8 = 23;
 const SLIDING_FRAMES: u8 = 14;
 const JUMPING_FRAMES: u8 = 35;
 const FALLING_FRAMES: u8 = 29;
-const RUNNING_SPEED: i16 = 3;
+const RUNNING_SPEED: i16 = 4;
 const JUMP_SPEED: i16 = -25;
 const GRAVITY: i16 = 1;
+const TERMINAL_VELOCITY: i16 = 20;
 
 #[derive(Copy, Clone)]
 pub struct RedHatBoyState<S> {
@@ -86,8 +88,15 @@ impl RedHatBoyState<Running> {
 
     pub fn knock_out(self) -> RedHatBoyState<Falling> {
         RedHatBoyState {
-            context: self.context.reset_frame().stop(),
+            context: self.context.set_vertical_velocity(0).reset_frame().stop(),
             _state: Falling {},
+        }
+    }
+
+    pub fn land_on(self, position: i16) -> RedHatBoyState<Running> {
+        RedHatBoyState {
+            context: self.context.set_on(position),
+            _state: Running {},
         }
     }
 }
@@ -116,8 +125,15 @@ impl RedHatBoyState<Sliding> {
 
     pub fn knock_out(self) -> RedHatBoyState<Falling> {
         RedHatBoyState {
-            context: self.context.reset_frame().stop(),
+            context: self.context.set_vertical_velocity(0).reset_frame().stop(),
             _state: Falling {},
+        }
+    }
+
+    pub fn land_on(self, position: i16) -> RedHatBoyState<Sliding> {
+        RedHatBoyState {
+            context: self.context.set_on(position),
+            _state: Sliding {},
         }
     }
 }
@@ -136,29 +152,29 @@ impl RedHatBoyState<Jumping> {
         self.context = self.context.update(JUMPING_FRAMES);
 
         if self.context.position.y >= FLOOR {
-            JumpingEndState::Complete(self.land())
+            JumpingEndState::Landing(self.land_on(super::HEIGHT))
         } else {
             JumpingEndState::Jumping(self)
         }
     }
 
-    fn land(&self) -> RedHatBoyState<Running> {
+    pub fn land_on(self, position: i16) -> RedHatBoyState<Running> {
         RedHatBoyState {
-            context: self.context.set_vertical_velocity(0).reset_frame(),
+            context: self.context.set_on(position).reset_frame(),
             _state: Running,
         }
     }
 
     pub fn knock_out(self) -> RedHatBoyState<Falling> {
         RedHatBoyState {
-            context: self.context.reset_frame().stop(),
+            context: self.context.set_vertical_velocity(0).reset_frame().stop(),
             _state: Falling {},
         }
     }
 }
 
 pub enum JumpingEndState {
-    Complete(RedHatBoyState<Running>),
+    Landing(RedHatBoyState<Running>),
     Jumping(RedHatBoyState<Jumping>),
 }
 
@@ -205,7 +221,9 @@ pub struct RedHatBoyContext {
 
 impl RedHatBoyContext {
     fn update(mut self, frame_count: u8) -> Self {
-        self.velocity.y += GRAVITY;
+        if self.velocity.y < TERMINAL_VELOCITY {
+            self.velocity.y += GRAVITY;
+        }
 
         if self.frame < frame_count {
             self.frame += 1;
@@ -240,6 +258,12 @@ impl RedHatBoyContext {
 
     pub fn stop(mut self) -> Self {
         self.velocity.x = 0;
+        self
+    }
+
+    pub fn set_on(mut self, position: i16) -> Self {
+        let position = position - PLAYER_HEIGHT;
+        self.position.y = position;
         self
     }
 }
