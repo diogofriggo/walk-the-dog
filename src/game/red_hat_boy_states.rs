@@ -231,7 +231,8 @@ impl RedHatBoyContext {
             self.frame = 0;
         }
 
-        self.position.x += self.velocity.x;
+        // Now it's the background that is going to move left instead of RHB moving right
+        // self.position.x += self.velocity.x;
         self.position.y += self.velocity.y;
 
         if self.position.y > FLOOR {

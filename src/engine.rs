@@ -236,10 +236,10 @@ pub struct Image {
 impl Image {
     pub fn new(element: HtmlImageElement, position: Point) -> Self {
         let bounding_box = Rect {
-            x: position.x.into(),
-            y: position.y.into(),
-            width: element.width() as f32,
-            height: element.height() as f32,
+            x: position.x,
+            y: position.y,
+            width: element.width() as i16,
+            height: element.height() as i16,
         };
 
         Self {
@@ -259,5 +259,18 @@ impl Image {
 
     pub fn bounding_box(&self) -> &Rect {
         &self.bounding_box
+    }
+
+    pub fn move_horizontally(&mut self, distance: i16) {
+        self.set_x(self.position.x + distance);
+    }
+
+    pub fn right(&self) -> i16 {
+        self.bounding_box.x + self.bounding_box.width
+    }
+
+    pub fn set_x(&mut self, x: i16) {
+        self.bounding_box.x = x;
+        self.position.x = x;
     }
 }

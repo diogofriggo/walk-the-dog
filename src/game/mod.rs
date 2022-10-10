@@ -11,10 +11,10 @@ pub const WIDTH: i16 = 1200;
 pub const HEIGHT: i16 = 600;
 
 pub struct Rect {
-    pub x: f32,
-    pub y: f32,
-    pub width: f32,
-    pub height: f32,
+    pub x: i16,
+    pub y: i16,
+    pub width: i16,
+    pub height: i16,
 }
 
 impl Rect {
@@ -69,9 +69,15 @@ impl WalkTheDog {
 
 pub struct Walk {
     pub boy: RedHatBoy,
-    pub background: Image,
+    pub backgrounds: [Image; 2],
     pub stone: Image,
     pub platform: Platform,
+}
+
+impl Walk {
+    pub fn velocity(&self) -> i16 {
+        -self.boy.walking_speed()
+    }
 }
 
 use red_hat_boy_states::*;
@@ -95,10 +101,10 @@ impl RedHatBoy {
         let sprite = self.current_sprite().expect("Cell not found!");
 
         let source = Rect {
-            x: sprite.frame.x.into(),
-            y: sprite.frame.y.into(),
-            width: sprite.frame.w.into(),
-            height: sprite.frame.h.into(),
+            x: sprite.frame.x as i16,
+            y: sprite.frame.y as i16,
+            width: sprite.frame.w as i16,
+            height: sprite.frame.h as i16,
         };
 
         let destination = self.destination_box();
@@ -108,9 +114,9 @@ impl RedHatBoy {
     }
 
     pub fn bounding_box(&self) -> Rect {
-        const X_OFFSET: f32 = 18.0;
-        const Y_OFFSET: f32 = 14.0;
-        const WIDTH_OFFSET: f32 = 28.0;
+        const X_OFFSET: i16 = 18;
+        const Y_OFFSET: i16 = 14;
+        const WIDTH_OFFSET: i16 = 28;
         let mut bounding_box = self.destination_box();
         bounding_box.x += X_OFFSET;
         bounding_box.width -= WIDTH_OFFSET;
@@ -128,10 +134,10 @@ impl RedHatBoy {
         let sprite_y = sprite.sprite_source_size.y as i16;
 
         Rect {
-            x: (x + sprite_x).into(),
-            y: (y + sprite_y).into(),
-            width: sprite.frame.w.into(),
-            height: sprite.frame.h.into(),
+            x: x + sprite_x,
+            y: y + sprite_y,
+            width: sprite.frame.w as i16,
+            height: sprite.frame.h as i16,
         }
     }
 
@@ -183,6 +189,10 @@ impl RedHatBoy {
 
     pub fn pos_y(&self) -> i16 {
         self.state_machine.context().position.y
+    }
+
+    pub fn walking_speed(&self) -> i16 {
+        self.state_machine.context().velocity.x
     }
 }
 
@@ -344,8 +354,8 @@ impl Platform {
         let destination = self.destination_box();
 
         let source = Rect {
-            x: platform.frame.x.into(),
-            y: platform.frame.y.into(),
+            x: platform.frame.x as i16,
+            y: platform.frame.y as i16,
             width: destination.width,
             height: destination.height,
         };
@@ -361,8 +371,8 @@ impl Platform {
     }
 
     pub fn bounding_boxes(&self) -> Vec<Rect> {
-        const X_OFFSET: f32 = 60.0;
-        const END_HEIGHT: f32 = 54.0;
+        const X_OFFSET: i16 = 60;
+        const END_HEIGHT: i16 = 54;
         let destination_box = self.destination_box();
         let bounding_box_one = Rect {
             x: destination_box.x,
@@ -374,7 +384,7 @@ impl Platform {
         let bounding_box_two = Rect {
             x: destination_box.x + X_OFFSET,
             y: destination_box.y,
-            width: destination_box.width - (X_OFFSET * 2.0),
+            width: destination_box.width - (X_OFFSET * 2),
             height: destination_box.height,
         };
 
@@ -391,18 +401,25 @@ impl Platform {
     pub fn destination_box(&self) -> Rect {
         let platform = self.current_sprite().expect("13.png does not exist");
 
-        let width = (platform.frame.w * 3).into();
-        let height = platform.frame.h.into();
+        let width = platform.frame.w * 3;
+        let height = platform.frame.h;
 
         Rect {
-            x: self.position.x.into(),
-            y: self.position.y.into(),
-            width,
-            height,
+            x: self.position.x,
+            y: self.position.y,
+            width: width as i16,
+            height: height as i16,
         }
     }
 
     pub fn current_sprite(&self) -> Option<&Cell> {
         self.sheet.frames.get("13.png")
+    }
+
+    pub fn move_horizontally(&mut self, distance: i16) {
+        for bounding_box in &mut self.bounding_boxes() {
+            bounding_box.x += distance;
+        }
+        self.position.x += distance;
     }
 }

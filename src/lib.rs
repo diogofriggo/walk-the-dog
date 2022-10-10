@@ -19,8 +19,8 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 
 const LOW_PLATFORM: i16 = 420;
-const HIGH_PLATFORM: i16 = 375;
-const FIRST_PLATFORM: i16 = 370;
+const _HIGH_PLATFORM: i16 = 375;
+const FIRST_PLATFORM: i16 = 500;
 
 #[async_trait(?Send)]
 impl Game for WalkTheDog {
@@ -35,10 +35,18 @@ impl Game for WalkTheDog {
                 );
 
                 let background = engine::load_image("BG.png").await?;
-                let background = Image::new(background, Point { x: 0, y: 0 });
+                let first_background = Image::new(background.clone(), Point { x: 0, y: 0 });
+                let background_width = background.width() as i16;
+                let second_background = Image::new(
+                    background,
+                    Point {
+                        x: background_width,
+                        y: 0,
+                    },
+                );
 
                 let stone = engine::load_image("Stone.png").await?;
-                let stone = Image::new(stone, Point { x: 150, y: 546 });
+                let stone = Image::new(stone, Point { x: 250, y: 546 });
 
                 let platform_sheet = browser::fetch_json("tiles.json").await?;
                 let platform_sheet = platform_sheet.into_serde::<Sheet>()?;
@@ -55,7 +63,7 @@ impl Game for WalkTheDog {
 
                 let walk = Walk {
                     boy,
-                    background,
+                    backgrounds: [first_background, second_background],
                     stone,
                     platform,
                 };
@@ -92,6 +100,22 @@ impl Game for WalkTheDog {
 
             walk.boy.update();
 
+            walk.platform.move_horizontally(walk.velocity());
+            walk.stone.move_horizontally(walk.velocity());
+            let velocity = walk.velocity();
+            let [first_background, second_background] = &mut walk.backgrounds;
+
+            first_background.move_horizontally(velocity);
+            second_background.move_horizontally(velocity);
+
+            if first_background.right() < 0 {
+                first_background.set_x(second_background.right())
+            }
+
+            if second_background.right() < 0 {
+                second_background.set_x(first_background.right())
+            }
+
             for bounding_box in &walk.platform.bounding_boxes() {
                 let intersects_with_platform = walk.boy.bounding_box().intersects(bounding_box);
 
@@ -99,12 +123,11 @@ impl Game for WalkTheDog {
                     // remember positive velocity means going down
                     // and if y1 < y2 it means that y1 is above y2
                     let is_falling = walk.boy.velocity_y() > 0;
-                    let is_above_platform =
-                        walk.boy.pos_y() < (walk.platform.destination_box().y as i16);
+                    let is_above_platform = walk.boy.pos_y() < walk.platform.destination_box().y;
 
                     if is_falling && is_above_platform {
                         let position = bounding_box.y;
-                        walk.boy.land_on(position as i16);
+                        walk.boy.land_on(position);
                     } else {
                         walk.boy.knock_out();
                     }
@@ -123,16 +146,18 @@ impl Game for WalkTheDog {
 
     fn draw(&self, renderer: &Renderer) {
         let rect = Rect {
-            x: 0.0,
-            y: 0.0,
-            width: game::WIDTH as f32,
-            height: game::HEIGHT as f32,
+            x: 0,
+            y: 0,
+            width: game::WIDTH,
+            height: game::HEIGHT,
         };
 
         renderer.clear(&rect);
 
         if let WalkTheDog::Loaded(walk) = self {
-            walk.background.draw(renderer);
+            for background in &walk.backgrounds {
+                background.draw(renderer);
+            }
             walk.boy.draw(renderer);
             walk.stone.draw(renderer);
             walk.stone.draw_bounding_box(renderer);
