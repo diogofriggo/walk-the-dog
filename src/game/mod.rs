@@ -11,28 +11,65 @@ pub const WIDTH: i16 = 1200;
 pub const HEIGHT: i16 = 600;
 
 pub struct Rect {
-    pub x: i16,
-    pub y: i16,
-    pub width: i16,
-    pub height: i16,
+    position: Point,
+    width: i16,
+    height: i16,
 }
 
 impl Rect {
+    pub fn new(position: Point, width: i16, height: i16) -> Self {
+        Rect {
+            position,
+            width,
+            height,
+        }
+    }
+
+    pub fn new_from_x_y(x: i16, y: i16, width: i16, height: i16) -> Self {
+        let position = Point { x, y };
+        Self::new(position, width, height)
+    }
+
     pub fn intersects(&self, rect: &Rect) -> bool {
-        let this_left = self.x;
-        let this_right = self.x + self.width;
-        let that_right = rect.x + rect.width;
-        let that_left = rect.x;
-        let x_overlaps = this_left < that_right && this_right > that_left;
-
-        let this_bottom = self.y;
-        let this_top = self.y + self.height;
-        let that_bottom = rect.y;
-        let that_top = rect.y + rect.height;
-
-        let y_overlaps = this_bottom < that_top && this_top > that_bottom;
-
+        let x_overlaps = self.left() < rect.right() && self.right() > rect.left();
+        let y_overlaps = self.top() < rect.bottom() && self.bottom() > rect.top();
         x_overlaps && y_overlaps
+    }
+
+    pub fn left(&self) -> i16 {
+        self.x()
+    }
+
+    pub fn right(&self) -> i16 {
+        self.x() + self.width
+    }
+
+    pub fn bottom(&self) -> i16 {
+        self.y() + self.height
+    }
+
+    pub fn top(&self) -> i16 {
+        self.y()
+    }
+
+    pub fn x(&self) -> i16 {
+        self.position.x
+    }
+
+    pub fn y(&self) -> i16 {
+        self.position.y
+    }
+
+    pub fn width(&self) -> i16 {
+        self.width
+    }
+
+    pub fn height(&self) -> i16 {
+        self.height
+    }
+
+    pub fn set_x(&mut self, x: i16) {
+        self.position.x = x;
     }
 }
 
@@ -100,12 +137,13 @@ impl RedHatBoy {
     pub fn draw(&self, renderer: &Renderer) {
         let sprite = self.current_sprite().expect("Cell not found!");
 
-        let source = Rect {
+        let position = Point {
             x: sprite.frame.x as i16,
             y: sprite.frame.y as i16,
-            width: sprite.frame.w as i16,
-            height: sprite.frame.h as i16,
         };
+        let width = sprite.frame.w as i16;
+        let height = sprite.frame.h as i16;
+        let source = Rect::new(position, width, height);
 
         let destination = self.destination_box();
 
@@ -118,9 +156,9 @@ impl RedHatBoy {
         const Y_OFFSET: i16 = 14;
         const WIDTH_OFFSET: i16 = 28;
         let mut bounding_box = self.destination_box();
-        bounding_box.x += X_OFFSET;
+        bounding_box.position.x += X_OFFSET;
         bounding_box.width -= WIDTH_OFFSET;
-        bounding_box.y += Y_OFFSET;
+        bounding_box.position.y += Y_OFFSET;
         bounding_box.height -= Y_OFFSET;
         bounding_box
     }
@@ -133,12 +171,13 @@ impl RedHatBoy {
         let sprite_x = sprite.sprite_source_size.x as i16;
         let sprite_y = sprite.sprite_source_size.y as i16;
 
-        Rect {
+        let position = Point {
             x: x + sprite_x,
             y: y + sprite_y,
-            width: sprite.frame.w as i16,
-            height: sprite.frame.h as i16,
-        }
+        };
+        let width = sprite.frame.w as i16;
+        let height = sprite.frame.h as i16;
+        Rect::new(position, width, height)
     }
 
     pub fn current_sprite(&self) -> Option<&Cell> {
@@ -353,12 +392,11 @@ impl Platform {
 
         let destination = self.destination_box();
 
-        let source = Rect {
+        let position = Point {
             x: platform.frame.x as i16,
             y: platform.frame.y as i16,
-            width: destination.width,
-            height: destination.height,
         };
+        let source = Rect::new(position, destination.width, destination.height);
 
         renderer.draw_image(&self.image, &source, &destination);
         self.draw_bounding_boxes(renderer);
@@ -374,26 +412,24 @@ impl Platform {
         const X_OFFSET: i16 = 60;
         const END_HEIGHT: i16 = 54;
         let destination_box = self.destination_box();
-        let bounding_box_one = Rect {
-            x: destination_box.x,
-            y: destination_box.y,
-            width: X_OFFSET,
-            height: END_HEIGHT,
+        let position = Point {
+            x: destination_box.x(),
+            y: destination_box.y(),
         };
+        let bounding_box_one = Rect::new(position, X_OFFSET, END_HEIGHT);
 
-        let bounding_box_two = Rect {
-            x: destination_box.x + X_OFFSET,
-            y: destination_box.y,
-            width: destination_box.width - (X_OFFSET * 2),
-            height: destination_box.height,
+        let position = Point {
+            x: destination_box.x() + X_OFFSET,
+            y: destination_box.y(),
         };
+        let width = destination_box.width - (X_OFFSET * 2);
+        let bounding_box_two = Rect::new(position, width, destination_box.height);
 
-        let bounding_box_three = Rect {
-            x: destination_box.x + destination_box.width - X_OFFSET,
-            y: destination_box.y,
-            width: X_OFFSET,
-            height: END_HEIGHT,
+        let position = Point {
+            x: destination_box.x() + destination_box.width - X_OFFSET,
+            y: destination_box.y(),
         };
+        let bounding_box_three = Rect::new(position, X_OFFSET, END_HEIGHT);
 
         vec![bounding_box_one, bounding_box_two, bounding_box_three]
     }
@@ -401,15 +437,13 @@ impl Platform {
     pub fn destination_box(&self) -> Rect {
         let platform = self.current_sprite().expect("13.png does not exist");
 
-        let width = platform.frame.w * 3;
-        let height = platform.frame.h;
-
-        Rect {
+        let position = Point {
             x: self.position.x,
             y: self.position.y,
-            width: width as i16,
-            height: height as i16,
-        }
+        };
+        let width = (platform.frame.w * 3) as i16;
+        let height = platform.frame.h as i16;
+        Rect::new(position, width, height)
     }
 
     pub fn current_sprite(&self) -> Option<&Cell> {
@@ -418,7 +452,7 @@ impl Platform {
 
     pub fn move_horizontally(&mut self, distance: i16) {
         for bounding_box in &mut self.bounding_boxes() {
-            bounding_box.x += distance;
+            bounding_box.position.x += distance;
         }
         self.position.x += distance;
     }

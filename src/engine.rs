@@ -28,10 +28,10 @@ pub struct Renderer {
 impl Renderer {
     pub fn clear(&self, rect: &Rect) {
         self.context.clear_rect(
-            rect.x.into(),
-            rect.y.into(),
-            rect.width.into(),
-            rect.height.into(),
+            rect.x().into(),
+            rect.y().into(),
+            rect.width().into(),
+            rect.height().into(),
         );
     }
 
@@ -39,14 +39,14 @@ impl Renderer {
         self.context
             .draw_image_with_html_image_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
                 image,
-                source.x.into(),
-                source.y.into(),
-                source.width.into(),
-                source.height.into(),
-                destination.x.into(),
-                destination.y.into(),
-                destination.width.into(),
-                destination.height.into(),
+                source.x().into(),
+                source.y().into(),
+                source.width().into(),
+                source.height().into(),
+                destination.x().into(),
+                destination.y().into(),
+                destination.width().into(),
+                destination.height().into(),
             )
             .expect("Drawing is throwing exceptions! Unrecoverable error.");
     }
@@ -61,10 +61,10 @@ impl Renderer {
         self.context.set_stroke_style(&JsValue::from_str("#FF0000"));
         self.context.begin_path();
         self.context.rect(
-            bounding_box.x.into(),
-            bounding_box.y.into(),
-            bounding_box.width.into(),
-            bounding_box.height.into(),
+            bounding_box.x().into(),
+            bounding_box.y().into(),
+            bounding_box.width().into(),
+            bounding_box.height().into(),
         );
         self.context.stroke();
     }
@@ -235,12 +235,7 @@ pub struct Image {
 
 impl Image {
     pub fn new(element: HtmlImageElement, position: Point) -> Self {
-        let bounding_box = Rect {
-            x: position.x,
-            y: position.y,
-            width: element.width() as i16,
-            height: element.height() as i16,
-        };
+        let bounding_box = Rect::new(position, element.width() as i16, element.height() as i16);
 
         Self {
             element,
@@ -266,11 +261,11 @@ impl Image {
     }
 
     pub fn right(&self) -> i16 {
-        self.bounding_box.x + self.bounding_box.width
+        self.bounding_box.right()
     }
 
     pub fn set_x(&mut self, x: i16) {
-        self.bounding_box.x = x;
+        self.bounding_box.set_x(x);
         self.position.x = x;
     }
 }

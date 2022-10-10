@@ -123,10 +123,10 @@ impl Game for WalkTheDog {
                     // remember positive velocity means going down
                     // and if y1 < y2 it means that y1 is above y2
                     let is_falling = walk.boy.velocity_y() > 0;
-                    let is_above_platform = walk.boy.pos_y() < walk.platform.destination_box().y;
+                    let is_above_platform = walk.boy.pos_y() < walk.platform.destination_box().y();
 
                     if is_falling && is_above_platform {
-                        let position = bounding_box.y;
+                        let position = bounding_box.y();
                         walk.boy.land_on(position);
                     } else {
                         walk.boy.knock_out();
@@ -145,13 +145,7 @@ impl Game for WalkTheDog {
     }
 
     fn draw(&self, renderer: &Renderer) {
-        let rect = Rect {
-            x: 0,
-            y: 0,
-            width: game::WIDTH,
-            height: game::HEIGHT,
-        };
-
+        let rect = Rect::new_from_x_y(0, 0, game::WIDTH, game::HEIGHT);
         renderer.clear(&rect);
 
         if let WalkTheDog::Loaded(walk) = self {
