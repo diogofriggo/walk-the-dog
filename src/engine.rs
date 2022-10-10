@@ -11,6 +11,7 @@ use web_sys::HtmlImageElement;
 
 use crate::{
     browser::{self, LoopClosure},
+    game::{Cell, Sheet},
     Rect,
 };
 
@@ -264,5 +265,24 @@ impl Image {
 
     pub fn set_x(&mut self, x: i16) {
         self.bounding_box.set_x(x);
+    }
+}
+
+pub struct SpriteSheet {
+    pub sheet: Sheet,
+    pub image: HtmlImageElement,
+}
+
+impl SpriteSheet {
+    pub fn new(sheet: Sheet, image: HtmlImageElement) -> Self {
+        SpriteSheet { sheet, image }
+    }
+
+    pub fn cell(&self, name: &str) -> Option<&Cell> {
+        self.sheet.frames.get(name)
+    }
+
+    pub fn draw(&self, renderer: &Renderer, source: &Rect, destination: &Rect) {
+        renderer.draw_image(&self.image, source, destination);
     }
 }

@@ -1,11 +1,11 @@
 mod red_hat_boy_states;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
 
 use serde::Deserialize;
 use web_sys::HtmlImageElement;
 
-use crate::engine::{Image, Point, Renderer};
+use crate::engine::{Image, Point, Renderer, SpriteSheet};
 
 pub const WIDTH: i16 = 1200;
 pub const HEIGHT: i16 = 600;
@@ -108,6 +108,7 @@ pub struct Walk {
     pub boy: RedHatBoy,
     pub backgrounds: [Image; 2],
     pub obstacles: Vec<Box<dyn Obstacle>>,
+    pub obstacle_sheet: Rc<SpriteSheet>,
 }
 
 impl Walk {
@@ -372,52 +373,79 @@ impl From<FallingEndState> for RedHatBoyStateMachine {
 }
 
 pub struct Platform {
-    sheet: Sheet,
-    image: HtmlImageElement,
+    sheet: Rc<SpriteSheet>,
+    bounding_boxes: Vec<Rect>,
+    sprites: Vec<Cell>,
     position: Point,
 }
 
 impl Platform {
-    pub fn new(sheet: Sheet, image: HtmlImageElement, position: Point) -> Self {
+    pub fn new(
+        sheet: Rc<SpriteSheet>,
+        position: Point,
+        sprite_names: &[&str],
+        bounding_boxes: &[Rect],
+    ) -> Self {
+        let sprites = sprite_names
+            .iter()
+            // Cloned turns Option<&T> into Option<T>
+            .filter_map(|sprite_name| sheet.cell(&sprite_name).cloned())
+            .collect();
+
+        // We are making bounding boxes be referenced by their image
+        // This will screw up my draw_rect
+        let bounding_boxes = bounding_boxes
+            .iter()
+            .map(|bounding_box| {
+                let x = bounding_box.x() + position.x;
+                let y = bounding_box.y() + position.y;
+                Rect::new_from_x_y(x, y, bounding_box.width, bounding_box.height)
+            })
+            .collect();
+
         Platform {
             sheet,
-            image,
+            bounding_boxes,
+            sprites,
             position,
         }
     }
 
-    pub fn draw_bounding_boxes(&self, renderer: &Renderer) {
-        for bounding_box in &self.bounding_boxes() {
-            renderer.draw_rect(bounding_box);
-        }
+    // pub fn draw_bounding_boxes(&self, renderer: &Renderer) {
+    //     for bounding_box in &self.bounding_boxes {
+    //         // TODO: this won't work anymore
+    //         renderer.draw_rect(bounding_box);
+    //     }
+    // }
+
+    pub fn bounding_boxes(&self) -> &Vec<Rect> {
+        &self.bounding_boxes
+        // const X_OFFSET: i16 = 60;
+        // const END_HEIGHT: i16 = 54;
+        // let destination_box = self.destination_box();
+        // let position = Point {
+        //     x: destination_box.x(),
+        //     y: destination_box.y(),
+        // };
+        // let bounding_box_one = Rect::new(position, X_OFFSET, END_HEIGHT);
+
+        // let position = Point {
+        //     x: destination_box.x() + X_OFFSET,
+        //     y: destination_box.y(),
+        // };
+        // let width = destination_box.width - (X_OFFSET * 2);
+        // let bounding_box_two = Rect::new(position, width, destination_box.height);
+
+        // let position = Point {
+        //     x: destination_box.x() + destination_box.width - X_OFFSET,
+        //     y: destination_box.y(),
+        // };
+        // let bounding_box_three = Rect::new(position, X_OFFSET, END_HEIGHT);
+
+        // vec![bounding_box_one, bounding_box_two, bounding_box_three]
     }
 
-    pub fn bounding_boxes(&self) -> Vec<Rect> {
-        const X_OFFSET: i16 = 60;
-        const END_HEIGHT: i16 = 54;
-        let destination_box = self.destination_box();
-        let position = Point {
-            x: destination_box.x(),
-            y: destination_box.y(),
-        };
-        let bounding_box_one = Rect::new(position, X_OFFSET, END_HEIGHT);
-
-        let position = Point {
-            x: destination_box.x() + X_OFFSET,
-            y: destination_box.y(),
-        };
-        let width = destination_box.width - (X_OFFSET * 2);
-        let bounding_box_two = Rect::new(position, width, destination_box.height);
-
-        let position = Point {
-            x: destination_box.x() + destination_box.width - X_OFFSET,
-            y: destination_box.y(),
-        };
-        let bounding_box_three = Rect::new(position, X_OFFSET, END_HEIGHT);
-
-        vec![bounding_box_one, bounding_box_two, bounding_box_three]
-    }
-
+    // could delete but this is still used by check_intersection
     pub fn destination_box(&self) -> Rect {
         let platform = self.current_sprite().expect("13.png does not exist");
 
@@ -431,7 +459,7 @@ impl Platform {
     }
 
     pub fn current_sprite(&self) -> Option<&Cell> {
-        self.sheet.frames.get("13.png")
+        self.sheet.cell("13.png")
     }
 }
 
@@ -463,24 +491,44 @@ impl Obstacle for Platform {
     }
 
     fn draw(&self, renderer: &Renderer) {
-        let platform = self.current_sprite().expect("13.png does not exist");
+        let mut x = 0;
+        self.sprites.iter().for_each(|sprite| {
+            let rect_x = sprite.frame.x as i16;
+            let rect_y = sprite.frame.y as i16;
+            let width = sprite.frame.w as i16;
+            let height = sprite.frame.h as i16;
+            let source = Rect::new_from_x_y(rect_x, rect_y, width, height);
 
-        let destination = self.destination_box();
+            let rect_x = self.position.x + x;
+            let rect_y = self.position.y;
+            let width = sprite.frame.w as i16;
+            let height = sprite.frame.h as i16;
+            let destination =
+                Rect::new_from_x_y(rect_x, rect_y, width, height);
 
-        let position = Point {
-            x: platform.frame.x as i16,
-            y: platform.frame.y as i16,
-        };
-        let source = Rect::new(position, destination.width, destination.height);
+            self.sheet.draw(renderer, &source, &destination);
 
-        renderer.draw_image(&self.image, &source, &destination);
-        self.draw_bounding_boxes(renderer);
+            x += sprite.frame.w as i16;
+        });
+
+        // let platform = self.current_sprite().expect("13.png does not exist");
+
+        // let destination = self.destination_box();
+
+        // let position = Point {
+        //     x: platform.frame.x as i16,
+        //     y: platform.frame.y as i16,
+        // };
+        // let source = Rect::new(position, destination.width, destination.height);
+
+        // self.sheet.draw(renderer, &source, &destination);
+        // self.draw_bounding_boxes(renderer);
     }
 
-    fn move_horizontally(&mut self, distance: i16) {
-        for bounding_box in &mut self.bounding_boxes() {
-            bounding_box.position.x += distance;
-        }
-        self.position.x += distance;
+    fn move_horizontally(&mut self, x: i16) {
+        self.position.x += x;
+        self.bounding_boxes.iter_mut().for_each(|bounding_box| {
+            bounding_box.set_x(bounding_box.position.x + x);
+        });
     }
 }

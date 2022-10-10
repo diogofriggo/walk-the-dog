@@ -3,10 +3,13 @@ mod browser;
 mod engine;
 mod game;
 
+use std::rc::Rc;
+
 use engine::GameLoop;
 use engine::Image;
 use engine::KeyState;
 use engine::Point;
+use engine::SpriteSheet;
 use game::Obstacle;
 use game::Rect;
 use game::RedHatBoy;
@@ -50,23 +53,33 @@ impl Game for WalkTheDog {
                 let stone = Image::new(stone, Point { x: 250, y: 546 });
                 let stone = Barrier::new(stone);
 
-                let platform_sheet = browser::fetch_json("tiles.json").await?;
-                let platform_sheet = platform_sheet.into_serde::<Sheet>()?;
+                let tiles = browser::fetch_json("tiles.json").await?;
+                let tiles = tiles.into_serde::<Sheet>()?;
 
-                let platform = engine::load_image("tiles.png").await?;
-                let platform = Platform::new(
-                    platform_sheet,
-                    platform,
-                    Point {
-                        x: FIRST_PLATFORM,
-                        y: LOW_PLATFORM,
-                    },
-                );
+                let sheet = SpriteSheet {
+                    sheet: tiles,
+                    image: engine::load_image("tiles.png").await?,
+                };
+                let sheet = Rc::new(sheet);
+
+                let position = Point {
+                    x: FIRST_PLATFORM,
+                    y: LOW_PLATFORM,
+                };
+
+                let sprite_names = &["13.png", "14.png", "15.png"];
+                let first = Rect::new_from_x_y(0, 0, 60, 54);
+                let second = Rect::new_from_x_y(60, 0, 384 - (60 * 2), 93);
+                let third = Rect::new_from_x_y(384 - 60, 0, 60, 54);
+                let bounding_boxes = &[first, second, third];
+
+                let platform = Platform::new(sheet.clone(), position, sprite_names, bounding_boxes);
 
                 let walk = Walk {
                     boy,
                     backgrounds: [first_background, second_background],
                     obstacles: vec![Box::new(stone), Box::new(platform)],
+                    obstacle_sheet: sheet,
                 };
 
                 Ok(Box::new(WalkTheDog::Loaded(walk)))
