@@ -7,6 +7,7 @@ use engine::GameLoop;
 use engine::Image;
 use engine::KeyState;
 use engine::Point;
+use game::Obstacle;
 use game::Rect;
 use game::RedHatBoy;
 use game::Walk;
@@ -47,6 +48,7 @@ impl Game for WalkTheDog {
 
                 let stone = engine::load_image("Stone.png").await?;
                 let stone = Image::new(stone, Point { x: 250, y: 546 });
+                let stone = Barrier::new(stone);
 
                 let platform_sheet = browser::fetch_json("tiles.json").await?;
                 let platform_sheet = platform_sheet.into_serde::<Sheet>()?;
@@ -64,8 +66,7 @@ impl Game for WalkTheDog {
                 let walk = Walk {
                     boy,
                     backgrounds: [first_background, second_background],
-                    stone,
-                    platform,
+                    obstacles: vec![Box::new(stone), Box::new(platform)],
                 };
 
                 Ok(Box::new(WalkTheDog::Loaded(walk)))
@@ -100,8 +101,6 @@ impl Game for WalkTheDog {
 
             walk.boy.update();
 
-            walk.platform.move_horizontally(walk.velocity());
-            walk.stone.move_horizontally(walk.velocity());
             let velocity = walk.velocity();
             let [first_background, second_background] = &mut walk.backgrounds;
 
@@ -116,31 +115,10 @@ impl Game for WalkTheDog {
                 second_background.set_x(first_background.right())
             }
 
-            for bounding_box in &walk.platform.bounding_boxes() {
-                let intersects_with_platform = walk.boy.bounding_box().intersects(bounding_box);
-
-                if intersects_with_platform {
-                    // remember positive velocity means going down
-                    // and if y1 < y2 it means that y1 is above y2
-                    let is_falling = walk.boy.velocity_y() > 0;
-                    let is_above_platform = walk.boy.pos_y() < walk.platform.destination_box().y();
-
-                    if is_falling && is_above_platform {
-                        let position = bounding_box.y();
-                        walk.boy.land_on(position);
-                    } else {
-                        walk.boy.knock_out();
-                    }
-                }
-            }
-
-            if walk
-                .boy
-                .bounding_box()
-                .intersects(walk.stone.bounding_box())
-            {
-                walk.boy.knock_out();
-            }
+            walk.obstacles.iter_mut().for_each(|obstacle| {
+                obstacle.move_horizontally(velocity);
+                obstacle.check_intersection(&mut walk.boy);
+            });
         }
     }
 
@@ -153,9 +131,9 @@ impl Game for WalkTheDog {
                 background.draw(renderer);
             }
             walk.boy.draw(renderer);
-            walk.stone.draw(renderer);
-            walk.stone.draw_bounding_box(renderer);
-            walk.platform.draw(renderer);
+            walk.obstacles.iter().for_each(|obstacle| {
+                obstacle.draw(renderer);
+            });
         }
     }
 }
@@ -172,4 +150,30 @@ pub fn main_js() -> Result<(), JsValue> {
     });
 
     Ok(())
+}
+
+pub struct Barrier {
+    image: Image,
+}
+
+impl Barrier {
+    pub fn new(image: Image) -> Self {
+        Barrier { image }
+    }
+}
+
+impl Obstacle for Barrier {
+    fn check_intersection(&self, boy: &mut RedHatBoy) {
+        if boy.bounding_box().intersects(self.image.bounding_box()) {
+            boy.knock_out();
+        }
+    }
+
+    fn draw(&self, renderer: &Renderer) {
+        self.image.draw(renderer);
+    }
+
+    fn move_horizontally(&mut self, x: i16) {
+        self.image.move_horizontally(x);
+    }
 }

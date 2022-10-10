@@ -11,9 +11,9 @@ pub const WIDTH: i16 = 1200;
 pub const HEIGHT: i16 = 600;
 
 pub struct Rect {
-    position: Point,
-    width: i16,
-    height: i16,
+    pub position: Point,
+    pub width: i16,
+    pub height: i16,
 }
 
 impl Rect {
@@ -107,8 +107,7 @@ impl WalkTheDog {
 pub struct Walk {
     pub boy: RedHatBoy,
     pub backgrounds: [Image; 2],
-    pub stone: Image,
-    pub platform: Platform,
+    pub obstacles: Vec<Box<dyn Obstacle>>,
 }
 
 impl Walk {
@@ -387,21 +386,6 @@ impl Platform {
         }
     }
 
-    pub fn draw(&self, renderer: &Renderer) {
-        let platform = self.current_sprite().expect("13.png does not exist");
-
-        let destination = self.destination_box();
-
-        let position = Point {
-            x: platform.frame.x as i16,
-            y: platform.frame.y as i16,
-        };
-        let source = Rect::new(position, destination.width, destination.height);
-
-        renderer.draw_image(&self.image, &source, &destination);
-        self.draw_bounding_boxes(renderer);
-    }
-
     pub fn draw_bounding_boxes(&self, renderer: &Renderer) {
         for bounding_box in &self.bounding_boxes() {
             renderer.draw_rect(bounding_box);
@@ -449,8 +433,51 @@ impl Platform {
     pub fn current_sprite(&self) -> Option<&Cell> {
         self.sheet.frames.get("13.png")
     }
+}
 
-    pub fn move_horizontally(&mut self, distance: i16) {
+pub trait Obstacle {
+    fn check_intersection(&self, boy: &mut RedHatBoy);
+    fn draw(&self, renderer: &Renderer);
+    fn move_horizontally(&mut self, x: i16);
+}
+
+impl Obstacle for Platform {
+    fn check_intersection(&self, boy: &mut RedHatBoy) {
+        if let Some(box_to_land_on) = self
+            .bounding_boxes()
+            .iter()
+            .find(|&bounding_box| boy.bounding_box().intersects(bounding_box))
+        {
+            // remember positive velocity means going down
+            // and if y1 < y2 it means that y1 is above y2
+            let is_falling = boy.velocity_y() > 0;
+            let is_above_platform = boy.pos_y() < self.destination_box().y();
+
+            if is_falling && is_above_platform {
+                let position = box_to_land_on.y();
+                boy.land_on(position);
+            } else {
+                boy.knock_out();
+            }
+        }
+    }
+
+    fn draw(&self, renderer: &Renderer) {
+        let platform = self.current_sprite().expect("13.png does not exist");
+
+        let destination = self.destination_box();
+
+        let position = Point {
+            x: platform.frame.x as i16,
+            y: platform.frame.y as i16,
+        };
+        let source = Rect::new(position, destination.width, destination.height);
+
+        renderer.draw_image(&self.image, &source, &destination);
+        self.draw_bounding_boxes(renderer);
+    }
+
+    fn move_horizontally(&mut self, distance: i16) {
         for bounding_box in &mut self.bounding_boxes() {
             bounding_box.position.x += distance;
         }
