@@ -3,9 +3,11 @@ mod browser;
 mod engine;
 mod game;
 mod segments;
+mod sound;
 
 use std::rc::Rc;
 
+use engine::Audio;
 use engine::GameLoop;
 use engine::Image;
 use engine::KeyState;
@@ -34,9 +36,16 @@ impl Game for WalkTheDog {
             WalkTheDog::Loading => {
                 let json = browser::fetch_json("rhb.json").await?;
 
+                let audio = Audio::new()?;
+                let jump_sound = audio.load_sound("SFX_Jump_23.mp3").await?;
+                let background_sound = audio.load_sound("background_song.mp3").await?;
+                audio.play_looping_sound(&background_sound)?;
+
                 let boy = RedHatBoy::new(
                     json.into_serde::<Sheet>()?,
                     engine::load_image("rhb.png").await?,
+                    audio,
+                    jump_sound,
                 );
 
                 let background = engine::load_image("BG.png").await?;

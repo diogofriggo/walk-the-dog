@@ -1,4 +1,4 @@
-use crate::engine::Point;
+use crate::engine::{Audio, Point, Sound};
 
 const FLOOR: i16 = 479;
 const PLAYER_HEIGHT: i16 = super::HEIGHT - FLOOR;
@@ -18,7 +18,7 @@ const JUMP_SPEED: i16 = -25;
 const GRAVITY: i16 = 1;
 const TERMINAL_VELOCITY: i16 = 20;
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 pub struct RedHatBoyState<S> {
     pub context: RedHatBoyContext,
     _state: S,
@@ -40,7 +40,7 @@ impl RedHatBoyState<Idle> {
         self
     }
 
-    pub fn new() -> Self {
+    pub fn new(audio: Audio, jump_sound: Sound) -> Self {
         RedHatBoyState {
             context: RedHatBoyContext {
                 frame: 0,
@@ -49,6 +49,8 @@ impl RedHatBoyState<Idle> {
                     y: FLOOR,
                 },
                 velocity: Point { x: 0, y: 0 },
+                audio,
+                jump_sound,
             },
             _state: Idle {},
         }
@@ -81,14 +83,18 @@ impl RedHatBoyState<Running> {
 
     pub fn jump(self) -> RedHatBoyState<Jumping> {
         RedHatBoyState {
-            context: self.context.set_vertical_velocity(JUMP_SPEED).reset_frame(),
+            context: self
+                .context
+                .reset_frame()
+                .set_vertical_velocity(JUMP_SPEED)
+                .play_jump_sound(),
             _state: Jumping {},
         }
     }
 
     pub fn knock_out(self) -> RedHatBoyState<Falling> {
         RedHatBoyState {
-            context: self.context.set_vertical_velocity(0).reset_frame().stop(),
+            context: self.context.reset_frame().set_vertical_velocity(0).stop(),
             _state: Falling {},
         }
     }
@@ -118,7 +124,7 @@ impl RedHatBoyState<Sliding> {
 
     fn stand(&self) -> RedHatBoyState<Running> {
         RedHatBoyState {
-            context: self.context.reset_frame(),
+            context: self.context.clone().reset_frame(),
             _state: Running,
         }
     }
@@ -195,7 +201,7 @@ impl RedHatBoyState<Falling> {
 
     fn die(&self) -> RedHatBoyState<Dead> {
         RedHatBoyState {
-            context: self.context,
+            context: self.context.clone(),
             _state: Dead,
         }
     }
@@ -212,11 +218,13 @@ impl RedHatBoyState<Dead> {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 pub struct RedHatBoyContext {
     pub frame: u8,
     pub position: Point,
     pub velocity: Point,
+    audio: Audio,
+    jump_sound: Sound,
 }
 
 impl RedHatBoyContext {
@@ -265,6 +273,13 @@ impl RedHatBoyContext {
     pub fn set_on(mut self, position: i16) -> Self {
         let position = position - PLAYER_HEIGHT;
         self.position.y = position;
+        self
+    }
+
+    fn play_jump_sound(self) -> Self {
+        if let Err(err) = self.audio.play_sound(&self.jump_sound) {
+            log!("Error playing jump sound {:#?}", err);
+        }
         self
     }
 }
