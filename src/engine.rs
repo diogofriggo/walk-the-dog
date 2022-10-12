@@ -11,8 +11,8 @@ use web_sys::{AudioBuffer, AudioContext, HtmlElement, HtmlImageElement};
 
 use crate::{
     browser::{self, LoopClosure},
-    game::{Cell, Sheet},
-    sound, Rect,
+    game::{Cell, Rect, Sheet},
+    sound,
 };
 
 use web_sys::CanvasRenderingContext2d;

@@ -4,8 +4,12 @@ use web_sys::HtmlImageElement;
 
 use crate::{
     engine::{Image, Point, SpriteSheet},
-    Barrier, Obstacle, Platform, Rect, FIRST_PLATFORM, HIGH_PLATFORM, LOW_PLATFORM,
+    game::{Barrier, Obstacle, Platform, Rect},
 };
+
+const FIRST_PLATFORM: i16 = 500;
+const HIGH_PLATFORM: i16 = 375;
+const LOW_PLATFORM: i16 = 420;
 
 pub fn stone_and_platform(
     stone: HtmlImageElement,

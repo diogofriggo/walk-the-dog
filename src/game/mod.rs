@@ -1,19 +1,30 @@
 mod red_hat_boy_states;
 
-use std::{collections::HashMap, rc::Rc};
+use std::{
+    collections::{btree_map::Keys, HashMap},
+    rc::Rc,
+};
 
+use anyhow::{anyhow, Result};
+use async_trait::async_trait;
 use rand::prelude::*;
 use serde::Deserialize;
 use web_sys::HtmlImageElement;
 
 use crate::{
-    engine::{Image, Point, Renderer, SpriteSheet, Sound, Audio},
-    segments, Obstacle, Rect,
+    browser,
+    engine::{self, Audio, Game, Image, KeyState, Point, Renderer, Sound, SpriteSheet},
+    segments,
 };
 
-pub const WIDTH: i16 = 1200;
-pub const HEIGHT: i16 = 600;
+const WIDTH: i16 = 1200;
+const HEIGHT: i16 = 600;
+const X_OFFSET: i16 = 18;
+const Y_OFFSET: i16 = 14;
+const WIDTH_OFFSET: i16 = 28;
 const OBSTACLE_BUFFER: i16 = 20;
+const TIMELINE_MINIMUM: i16 = 1000;
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct SheetRect {
     pub x: u16,
@@ -34,14 +45,242 @@ pub struct Sheet {
     pub frames: HashMap<String, Cell>,
 }
 
-pub enum WalkTheDog {
-    Loading,
-    Loaded(Walk),
+pub struct WalkTheDog {
+    pub machine: Option<WalkTheDogStateMachine>,
 }
 
 impl WalkTheDog {
     pub fn new() -> Self {
-        WalkTheDog::Loading
+        WalkTheDog { machine: None }
+    }
+}
+
+#[async_trait(?Send)]
+impl Game for WalkTheDog {
+    async fn initialize(&self) -> Result<Box<dyn Game>> {
+        match self.machine {
+            None => {
+                let json = browser::fetch_json("rhb.json").await?;
+
+                let audio = Audio::new()?;
+                let jump_sound = audio.load_sound("SFX_Jump_23.mp3").await?;
+                let background_sound = audio.load_sound("background_song.mp3").await?;
+                audio.play_looping_sound(&background_sound)?;
+
+                let boy = RedHatBoy::new(
+                    json.into_serde::<Sheet>()?,
+                    engine::load_image("rhb.png").await?,
+                    audio,
+                    jump_sound,
+                );
+
+                let background = engine::load_image("BG.png").await?;
+                let first_background = Image::new(background.clone(), Point { x: 0, y: 0 });
+                let background_width = background.width() as i16;
+                let second_background = Image::new(
+                    background,
+                    Point {
+                        x: background_width,
+                        y: 0,
+                    },
+                );
+
+                let stone = engine::load_image("Stone.png").await?;
+
+                let tiles = browser::fetch_json("tiles.json").await?;
+                let tiles = tiles.into_serde::<Sheet>()?;
+
+                let sheet = SpriteSheet {
+                    sheet: tiles,
+                    image: engine::load_image("tiles.png").await?,
+                };
+                let sheet = Rc::new(sheet);
+
+                let starting_obstacles =
+                    segments::stone_and_platform(stone.clone(), sheet.clone(), 0);
+                let timeline = rightmost(&starting_obstacles);
+
+                let walk = Walk {
+                    boy,
+                    backgrounds: [first_background, second_background],
+                    obstacles: starting_obstacles,
+                    obstacle_sheet: sheet,
+                    stone,
+                    timeline,
+                };
+
+                Ok(Box::new(WalkTheDog {
+                    machine: Some(WalkTheDogStateMachine::new(walk)),
+                }))
+            }
+            Some(_) => Err(anyhow!("Error: Game is already initialized!")),
+        }
+    }
+
+    fn update(&mut self, keystate: &KeyState) {
+        if let Some(machine) = self.machine.take() {
+            self.machine.replace(machine.update(keystate));
+        }
+        assert!(self.machine.is_some());
+    }
+
+    fn draw(&self, renderer: &Renderer) {
+        let rect = Rect::new_from_x_y(0, 0, WIDTH, HEIGHT);
+        renderer.clear(&rect);
+
+        if let Some(machine) = &self.machine {
+            machine.draw(renderer);
+        }
+    }
+}
+
+pub enum WalkTheDogStateMachine {
+    Ready(WalkTheDogState<Ready>),
+    Walking(WalkTheDogState<Walking>),
+    GameOver(WalkTheDogState<GameOver>),
+}
+
+impl WalkTheDogStateMachine {
+    fn new(walk: Walk) -> Self {
+        WalkTheDogStateMachine::Ready(WalkTheDogState::new(walk))
+    }
+
+    fn update(self, keystate: &KeyState) -> Self {
+        match self {
+            WalkTheDogStateMachine::Ready(state) => state.update(keystate).into(),
+            WalkTheDogStateMachine::Walking(state) => state.update(keystate).into(),
+            WalkTheDogStateMachine::GameOver(state) => state.update().into(),
+        }
+    }
+
+    fn draw(&self, renderer: &Renderer) {
+        match self {
+            WalkTheDogStateMachine::Ready(state) => state.draw(renderer),
+            WalkTheDogStateMachine::Walking(state) => state.draw(renderer),
+            WalkTheDogStateMachine::GameOver(state) => state.draw(renderer),
+        }
+    }
+}
+
+struct WalkTheDogState<T> {
+    _state: T,
+    walk: Walk,
+}
+
+impl<T> WalkTheDogState<T> {
+    fn draw(&self, renderer: &Renderer) {
+        self.walk.draw(renderer);
+    }
+}
+
+struct Ready;
+
+struct Walking;
+
+struct GameOver;
+
+impl WalkTheDogState<Ready> {
+    fn new(walk: Walk) -> WalkTheDogState<Ready> {
+        WalkTheDogState {
+            _state: Ready,
+            walk,
+        }
+    }
+
+    fn update(mut self, keystate: &KeyState) -> ReadyEndState {
+        self.walk.boy.update();
+        if keystate.is_pressed("ArrowRight") {
+            ReadyEndState::Complete(self.start_running())
+        } else {
+            ReadyEndState::Continue(self)
+        }
+    }
+
+    fn start_running(mut self) -> WalkTheDogState<Walking> {
+        self.run_right();
+        WalkTheDogState {
+            _state: Walking,
+            walk: self.walk,
+        }
+    }
+
+    fn run_right(&mut self) {
+        self.walk.boy.run_right();
+    }
+}
+
+enum ReadyEndState {
+    Complete(WalkTheDogState<Walking>),
+    Continue(WalkTheDogState<Ready>),
+}
+
+impl From<ReadyEndState> for WalkTheDogStateMachine {
+    fn from(state: ReadyEndState) -> Self {
+        match state {
+            ReadyEndState::Complete(walking) => walking.into(),
+            ReadyEndState::Continue(ready) => ready.into(),
+        }
+    }
+}
+
+impl WalkTheDogState<Walking> {
+    fn update(mut self, keystate: &KeyState) -> WalkTheDogState<Walking> {
+        if keystate.is_pressed("Space") {
+            self.walk.boy.jump()
+        }
+
+        self.walk.boy.update();
+
+        let walking_speed = self.walk.velocity();
+        let [first_background, second_background] = &mut self.walk.backgrounds;
+
+        first_background.move_horizontally(walking_speed);
+        second_background.move_horizontally(walking_speed);
+
+        if first_background.right() < 0 {
+            first_background.set_x(second_background.right())
+        }
+
+        if second_background.right() < 0 {
+            second_background.set_x(first_background.right())
+        }
+
+        self.walk.obstacles.iter_mut().for_each(|obstacle| {
+            obstacle.move_horizontally(walking_speed);
+            obstacle.check_intersection(&mut self.walk.boy);
+        });
+
+        if self.walk.timeline < TIMELINE_MINIMUM {
+            self.walk.generate_next_segment();
+        } else {
+            self.walk.timeline += walking_speed;
+        }
+
+        self
+    }
+}
+
+impl WalkTheDogState<GameOver> {
+    fn update(self) -> WalkTheDogState<GameOver> {
+        self
+    }
+}
+
+impl From<WalkTheDogState<Ready>> for WalkTheDogStateMachine {
+    fn from(state: WalkTheDogState<Ready>) -> Self {
+        WalkTheDogStateMachine::Ready(state)
+    }
+}
+
+impl From<WalkTheDogState<Walking>> for WalkTheDogStateMachine {
+    fn from(state: WalkTheDogState<Walking>) -> Self {
+        WalkTheDogStateMachine::Walking(state)
+    }
+}
+
+impl From<WalkTheDogState<GameOver>> for WalkTheDogStateMachine {
+    fn from(state: WalkTheDogState<GameOver>) -> Self {
+        WalkTheDogStateMachine::GameOver(state)
     }
 }
 
@@ -80,6 +319,18 @@ impl Walk {
         self.timeline = rightmost(&next_obstacles);
         self.obstacles.append(&mut next_obstacles);
     }
+
+    fn draw(&self, renderer: &Renderer) {
+        self.backgrounds.iter().for_each(|background| {
+            background.draw(renderer);
+        });
+
+        self.boy.draw(renderer);
+
+        self.obstacles.iter().for_each(|obstacle| {
+            obstacle.draw(renderer);
+        });
+    }
 }
 
 use red_hat_boy_states::*;
@@ -91,7 +342,12 @@ pub struct RedHatBoy {
 }
 
 impl RedHatBoy {
-    pub fn new(sprite_sheet: Sheet, image: HtmlImageElement, audio: Audio, jump_sound: Sound) -> Self {
+    pub fn new(
+        sprite_sheet: Sheet,
+        image: HtmlImageElement,
+        audio: Audio,
+        jump_sound: Sound,
+    ) -> Self {
         RedHatBoy {
             state_machine: RedHatBoyStateMachine::Idle(RedHatBoyState::new(audio, jump_sound)),
             sprite_sheet,
@@ -117,9 +373,6 @@ impl RedHatBoy {
     }
 
     pub fn bounding_box(&self) -> Rect {
-        const X_OFFSET: i16 = 18;
-        const Y_OFFSET: i16 = 14;
-        const WIDTH_OFFSET: i16 = 28;
         let mut bounding_box = self.destination_box();
         bounding_box.position.x += X_OFFSET;
         bounding_box.width -= WIDTH_OFFSET;
@@ -343,4 +596,262 @@ pub fn rightmost(obstacle_list: &[Box<dyn Obstacle>]) -> i16 {
         .map(|obstacle| obstacle.right())
         .max_by(|x, y| x.cmp(&y))
         .unwrap_or(0)
+}
+
+pub struct Barrier {
+    image: Image,
+}
+
+impl Barrier {
+    pub fn new(image: Image) -> Self {
+        Barrier { image }
+    }
+}
+
+impl Obstacle for Barrier {
+    fn check_intersection(&self, boy: &mut RedHatBoy) {
+        if boy.bounding_box().intersects(self.image.bounding_box()) {
+            boy.knock_out();
+        }
+    }
+
+    fn draw(&self, renderer: &Renderer) {
+        self.image.draw(renderer);
+    }
+
+    fn move_horizontally(&mut self, x: i16) {
+        self.image.move_horizontally(x);
+    }
+
+    fn right(&self) -> i16 {
+        self.image.bounding_box().right()
+    }
+}
+
+pub struct Platform {
+    sheet: Rc<SpriteSheet>,
+    bounding_boxes: Vec<Rect>,
+    sprites: Vec<Cell>,
+    position: Point,
+}
+
+impl Platform {
+    pub fn new(
+        sheet: Rc<SpriteSheet>,
+        position: Point,
+        sprite_names: &[&str],
+        bounding_boxes: &[Rect],
+    ) -> Self {
+        let sprites = sprite_names
+            .iter()
+            // Cloned turns Option<&T> into Option<T>
+            .filter_map(|sprite_name| sheet.cell(sprite_name).cloned())
+            .collect();
+
+        // We are making bounding boxes be referenced by their image
+        // This will screw up my draw_rect
+        let bounding_boxes = bounding_boxes
+            .iter()
+            .map(|bounding_box| {
+                let x = bounding_box.x() + position.x;
+                let y = bounding_box.y() + position.y;
+                Rect::new_from_x_y(x, y, bounding_box.width, bounding_box.height)
+            })
+            .collect();
+
+        Platform {
+            sheet,
+            bounding_boxes,
+            sprites,
+            position,
+        }
+    }
+
+    // pub fn draw_bounding_boxes(&self, renderer: &Renderer) {
+    //     for bounding_box in &self.bounding_boxes {
+    //         // TODO: this won't work anymore
+    //         renderer.draw_rect(bounding_box);
+    //     }
+    // }
+
+    pub fn bounding_boxes(&self) -> &Vec<Rect> {
+        &self.bounding_boxes
+        // const X_OFFSET: i16 = 60;
+        // const END_HEIGHT: i16 = 54;
+        // let destination_box = self.destination_box();
+        // let position = Point {
+        //     x: destination_box.x(),
+        //     y: destination_box.y(),
+        // };
+        // let bounding_box_one = Rect::new(position, X_OFFSET, END_HEIGHT);
+
+        // let position = Point {
+        //     x: destination_box.x() + X_OFFSET,
+        //     y: destination_box.y(),
+        // };
+        // let width = destination_box.width - (X_OFFSET * 2);
+        // let bounding_box_two = Rect::new(position, width, destination_box.height);
+
+        // let position = Point {
+        //     x: destination_box.x() + destination_box.width - X_OFFSET,
+        //     y: destination_box.y(),
+        // };
+        // let bounding_box_three = Rect::new(position, X_OFFSET, END_HEIGHT);
+
+        // vec![bounding_box_one, bounding_box_two, bounding_box_three]
+    }
+
+    // could delete but this is still used by check_intersection
+    pub fn destination_box(&self) -> Rect {
+        let platform = self.current_sprite().expect("13.png does not exist");
+
+        let position = Point {
+            x: self.position.x,
+            y: self.position.y,
+        };
+        let width = (platform.frame.w * 3) as i16;
+        let height = platform.frame.h as i16;
+        Rect::new(position, width, height)
+    }
+
+    pub fn current_sprite(&self) -> Option<&Cell> {
+        self.sheet.cell("13.png")
+    }
+}
+
+pub trait Obstacle {
+    fn check_intersection(&self, boy: &mut RedHatBoy);
+    fn draw(&self, renderer: &Renderer);
+    fn move_horizontally(&mut self, x: i16);
+    fn right(&self) -> i16;
+}
+
+impl Obstacle for Platform {
+    fn check_intersection(&self, boy: &mut RedHatBoy) {
+        if let Some(box_to_land_on) = self
+            .bounding_boxes()
+            .iter()
+            .find(|&bounding_box| boy.bounding_box().intersects(bounding_box))
+        {
+            // remember positive velocity means going down
+            // and if y1 < y2 it means that y1 is above y2
+            let is_falling = boy.velocity_y() > 0;
+            let is_above_platform = boy.pos_y() < self.destination_box().y();
+
+            if is_falling && is_above_platform {
+                let position = box_to_land_on.y();
+                boy.land_on(position);
+            } else {
+                boy.knock_out();
+            }
+        }
+    }
+
+    fn draw(&self, renderer: &Renderer) {
+        let mut x = 0;
+        self.sprites.iter().for_each(|sprite| {
+            let rect_x = sprite.frame.x as i16;
+            let rect_y = sprite.frame.y as i16;
+            let width = sprite.frame.w as i16;
+            let height = sprite.frame.h as i16;
+            let source = Rect::new_from_x_y(rect_x, rect_y, width, height);
+
+            let rect_x = self.position.x + x;
+            let rect_y = self.position.y;
+            let width = sprite.frame.w as i16;
+            let height = sprite.frame.h as i16;
+            let destination = Rect::new_from_x_y(rect_x, rect_y, width, height);
+
+            self.sheet.draw(renderer, &source, &destination);
+
+            x += sprite.frame.w as i16;
+        });
+
+        // let platform = self.current_sprite().expect("13.png does not exist");
+
+        // let destination = self.destination_box();
+
+        // let position = Point {
+        //     x: platform.frame.x as i16,
+        //     y: platform.frame.y as i16,
+        // };
+        // let source = Rect::new(position, destination.width, destination.height);
+
+        // self.sheet.draw(renderer, &source, &destination);
+        // self.draw_bounding_boxes(renderer);
+    }
+
+    fn move_horizontally(&mut self, x: i16) {
+        self.position.x += x;
+        self.bounding_boxes.iter_mut().for_each(|bounding_box| {
+            bounding_box.set_x(bounding_box.position.x + x);
+        });
+    }
+
+    fn right(&self) -> i16 {
+        self.bounding_boxes.last().unwrap().right()
+    }
+}
+
+pub struct Rect {
+    pub position: Point,
+    pub width: i16,
+    pub height: i16,
+}
+
+impl Rect {
+    pub fn new(position: Point, width: i16, height: i16) -> Self {
+        Rect {
+            position,
+            width,
+            height,
+        }
+    }
+
+    pub fn new_from_x_y(x: i16, y: i16, width: i16, height: i16) -> Self {
+        let position = Point { x, y };
+        Self::new(position, width, height)
+    }
+
+    pub fn intersects(&self, rect: &Rect) -> bool {
+        let x_overlaps = self.left() < rect.right() && self.right() > rect.left();
+        let y_overlaps = self.top() < rect.bottom() && self.bottom() > rect.top();
+        x_overlaps && y_overlaps
+    }
+
+    pub fn left(&self) -> i16 {
+        self.x()
+    }
+
+    pub fn right(&self) -> i16 {
+        self.x() + self.width
+    }
+
+    pub fn bottom(&self) -> i16 {
+        self.y() + self.height
+    }
+
+    pub fn top(&self) -> i16 {
+        self.y()
+    }
+
+    pub fn x(&self) -> i16 {
+        self.position.x
+    }
+
+    pub fn y(&self) -> i16 {
+        self.position.y
+    }
+
+    pub fn width(&self) -> i16 {
+        self.width
+    }
+
+    pub fn height(&self) -> i16 {
+        self.height
+    }
+
+    pub fn set_x(&mut self, x: i16) {
+        self.position.x = x;
+    }
 }
