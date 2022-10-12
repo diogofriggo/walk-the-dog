@@ -11,7 +11,7 @@ use web_sys::{AudioBuffer, AudioContext, HtmlElement, HtmlImageElement};
 
 use crate::{
     browser::{self, LoopClosure},
-    game::{Cell, Rect, Sheet},
+    game::{Cell, Sheet},
     sound,
 };
 
@@ -58,7 +58,7 @@ impl Renderer {
             .expect("Drawing is throwing exceptions! Unrecoverable error.");
     }
 
-    pub fn draw_rect(&self, bounding_box: &Rect) {
+    pub fn _draw_rect(&self, bounding_box: &Rect) {
         self.context.set_stroke_style(&JsValue::from_str("#FF0000"));
         self.context.begin_path();
         self.context.rect(
@@ -247,8 +247,8 @@ impl Image {
         renderer.draw_entire_image(&self.element, &self.bounding_box.position)
     }
 
-    pub fn draw_bounding_box(&self, renderer: &Renderer) {
-        renderer.draw_rect(&self.bounding_box);
+    pub fn _draw_bounding_box(&self, renderer: &Renderer) {
+        renderer._draw_rect(&self.bounding_box);
     }
 
     pub fn bounding_box(&self) -> &Rect {
@@ -274,10 +274,6 @@ pub struct SpriteSheet {
 }
 
 impl SpriteSheet {
-    pub fn new(sheet: Sheet, image: HtmlImageElement) -> Self {
-        SpriteSheet { sheet, image }
-    }
-
     pub fn cell(&self, name: &str) -> Option<&Cell> {
         self.sheet.frames.get(name)
     }
@@ -308,25 +304,110 @@ impl Audio {
     }
 
     pub fn play_sound(&self, sound: &Sound) -> Result<()> {
-        sound::play_sound(&self.context, &sound.buffer, sound::LOOPING::NO)
+        sound::play_sound(&self.context, &sound.buffer, sound::LOOPING::No)
     }
 
     pub fn play_looping_sound(&self, sound: &Sound) -> Result<()> {
-        sound::play_sound(&self.context, &sound.buffer, sound::LOOPING::YES)
+        sound::play_sound(&self.context, &sound.buffer, sound::LOOPING::Yes)
     }
 }
 
 #[derive(Clone)]
 pub struct Sound {
-    buffer: AudioBuffer,
+    pub buffer: AudioBuffer,
 }
 
 pub fn add_click_handler(elem: HtmlElement) -> UnboundedReceiver<()> {
     let (mut click_sender, click_receiver) = unbounded();
     let on_click = browser::closure_wrap(Box::new(move || {
-        click_sender.start_send(());
+        click_sender.start_send(()).unwrap();
     }) as Box<dyn FnMut()>);
     elem.set_onclick(Some(on_click.as_ref().unchecked_ref()));
     on_click.forget();
     click_receiver
+}
+
+pub struct Rect {
+    pub position: Point,
+    pub width: i16,
+    pub height: i16,
+}
+
+impl Rect {
+    pub fn new(position: Point, width: i16, height: i16) -> Self {
+        Rect {
+            position,
+            width,
+            height,
+        }
+    }
+
+    pub fn new_from_x_y(x: i16, y: i16, width: i16, height: i16) -> Self {
+        let position = Point { x, y };
+        Self::new(position, width, height)
+    }
+
+    pub fn intersects(&self, rect: &Rect) -> bool {
+        let x_overlaps = self.left() < rect.right() && self.right() > rect.left();
+        let y_overlaps = self.top() < rect.bottom() && self.bottom() > rect.top();
+        x_overlaps && y_overlaps
+    }
+
+    pub fn left(&self) -> i16 {
+        self.x()
+    }
+
+    pub fn right(&self) -> i16 {
+        self.x() + self.width
+    }
+
+    pub fn bottom(&self) -> i16 {
+        self.y() + self.height
+    }
+
+    pub fn top(&self) -> i16 {
+        self.y()
+    }
+
+    pub fn x(&self) -> i16 {
+        self.position.x
+    }
+
+    pub fn y(&self) -> i16 {
+        self.position.y
+    }
+
+    pub fn width(&self) -> i16 {
+        self.width
+    }
+
+    pub fn height(&self) -> i16 {
+        self.height
+    }
+
+    pub fn set_x(&mut self, x: i16) {
+        self.position.x = x;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn two_rects_that_intersect_on_the_left() {
+        let rect1 = Rect {
+            position: Point { x: 10, y: 10 },
+            height: 100,
+            width: 100,
+        };
+
+        let rect2 = Rect {
+            position: Point { x: 0, y: 10 },
+            height: 100,
+            width: 100,
+        };
+
+        assert!(rect2.intersects(&rect1));
+    }
 }

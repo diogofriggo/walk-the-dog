@@ -3,8 +3,8 @@ use std::rc::Rc;
 use web_sys::HtmlImageElement;
 
 use crate::{
-    engine::{Image, Point, SpriteSheet},
-    game::{Barrier, Obstacle, Platform, Rect},
+    engine::{Image, Point, Rect, SpriteSheet},
+    game::{Barrier, Obstacle, Platform},
 };
 
 const FIRST_PLATFORM: i16 = 500;

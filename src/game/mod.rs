@@ -1,9 +1,13 @@
+#[cfg(test)]
+mod test_browser;
+// #[cfg(test)]
+// use test_browser as browser;
+
+use crate::browser;
+
 mod red_hat_boy_states;
 
-use std::{
-    collections::{btree_map::Keys, HashMap},
-    rc::Rc,
-};
+use std::{collections::HashMap, rc::Rc};
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -13,8 +17,7 @@ use serde::Deserialize;
 use web_sys::HtmlImageElement;
 
 use crate::{
-    browser,
-    engine::{self, Audio, Game, Image, KeyState, Point, Renderer, Sound, SpriteSheet},
+    engine::{self, Audio, Game, Image, KeyState, Point, Rect, Renderer, Sound, SpriteSheet},
     segments::{self, stone_and_platform},
 };
 
@@ -147,6 +150,7 @@ impl WalkTheDogStateMachine {
     }
 
     fn update(self, keystate: &KeyState) -> Self {
+        // log!("KeyState is {:#?}", keystate);
         match self {
             WalkTheDogStateMachine::Ready(state) => state.update(keystate).into(),
             WalkTheDogStateMachine::Walking(state) => state.update(keystate).into(),
@@ -163,7 +167,7 @@ impl WalkTheDogStateMachine {
     }
 }
 
-struct WalkTheDogState<T> {
+pub struct WalkTheDogState<T> {
     _state: T,
     walk: Walk,
 }
@@ -174,11 +178,11 @@ impl<T> WalkTheDogState<T> {
     }
 }
 
-struct Ready;
+pub struct Ready;
 
-struct Walking;
+pub struct Walking;
 
-struct GameOver {
+pub struct GameOver {
     new_game_event: UnboundedReceiver<()>,
 }
 
@@ -306,7 +310,10 @@ impl WalkTheDogState<GameOver> {
     }
 
     fn new_game(self) -> WalkTheDogState<Ready> {
-        browser::hide_ui().unwrap();
+        if let Err(err) = browser::hide_ui() {
+            error!("Error hiding the browser {:#?}", err);
+        }
+
         WalkTheDogState {
             _state: Ready,
             walk: Walk::reset(self.walk),
@@ -515,6 +522,8 @@ impl RedHatBoy {
     }
 
     pub fn knock_out(&mut self) {
+        // error!("Knock out!");
+        // panic!();
         self.state_machine = self.state_machine.clone().transition(Event::KnockOut);
     }
 
@@ -698,7 +707,7 @@ pub fn rightmost(obstacle_list: &[Box<dyn Obstacle>]) -> i16 {
     obstacle_list
         .iter()
         .map(|obstacle| obstacle.right())
-        .max_by(|x, y| x.cmp(&y))
+        .max_by(|x, y| x.cmp(y))
         .unwrap_or(0)
 }
 
@@ -894,68 +903,5 @@ impl Obstacle for Platform {
 
     fn right(&self) -> i16 {
         self.bounding_boxes.last().unwrap().right()
-    }
-}
-
-pub struct Rect {
-    pub position: Point,
-    pub width: i16,
-    pub height: i16,
-}
-
-impl Rect {
-    pub fn new(position: Point, width: i16, height: i16) -> Self {
-        Rect {
-            position,
-            width,
-            height,
-        }
-    }
-
-    pub fn new_from_x_y(x: i16, y: i16, width: i16, height: i16) -> Self {
-        let position = Point { x, y };
-        Self::new(position, width, height)
-    }
-
-    pub fn intersects(&self, rect: &Rect) -> bool {
-        let x_overlaps = self.left() < rect.right() && self.right() > rect.left();
-        let y_overlaps = self.top() < rect.bottom() && self.bottom() > rect.top();
-        x_overlaps && y_overlaps
-    }
-
-    pub fn left(&self) -> i16 {
-        self.x()
-    }
-
-    pub fn right(&self) -> i16 {
-        self.x() + self.width
-    }
-
-    pub fn bottom(&self) -> i16 {
-        self.y() + self.height
-    }
-
-    pub fn top(&self) -> i16 {
-        self.y()
-    }
-
-    pub fn x(&self) -> i16 {
-        self.position.x
-    }
-
-    pub fn y(&self) -> i16 {
-        self.position.y
-    }
-
-    pub fn width(&self) -> i16 {
-        self.width
-    }
-
-    pub fn height(&self) -> i16 {
-        self.height
-    }
-
-    pub fn set_x(&mut self, x: i16) {
-        self.position.x = x;
     }
 }
