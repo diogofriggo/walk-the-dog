@@ -1,6 +1,6 @@
 # Endless runner game in WebAssembly with Rust!
 
-From the book-tutorial Game Development with Rust and WebAssembly by Eric Smith
+Based on the book-tutorial Game Development with Rust and WebAssembly by Eric Smith
 
 ![Alt RedHatBoy](rhb_compressed.gif)
 
