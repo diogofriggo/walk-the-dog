@@ -4,3 +4,6 @@ node_modules
 /pkg
 /wasm-pack.log
 rhb.gif
+
+# Local Netlify folder
+.netlify
